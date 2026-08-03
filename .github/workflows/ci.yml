@@ -6,4 +6,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
-      - run: cargo test --workspace
+      - name: Test workspace
+        run: cargo test --workspace
+      - name: Validate lock schema (golden + pin output)
+        run: cargo test -p pinner --test lock_schema

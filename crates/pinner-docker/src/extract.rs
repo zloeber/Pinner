@@ -41,9 +41,6 @@ fn extract_dockerfile(path: &Path) -> Result<Vec<Finding>, EcosystemError> {
         let Some(image) = parse_from_image(line) else {
             continue;
         };
-        if !is_floating_image(&image) {
-            continue;
-        }
         findings.push(finding(path, &image));
     }
     Ok(findings)
@@ -74,7 +71,7 @@ fn extract_compose(path: &Path) -> Result<Vec<Finding>, EcosystemError> {
             continue;
         };
         let image = image.trim().to_string();
-        if image.is_empty() || !is_floating_image(&image) {
+        if image.is_empty() {
             continue;
         }
         findings.push(finding(path, &image));
@@ -88,7 +85,7 @@ fn finding(path: &Path, image: &str) -> Finding {
         name: image_name(image),
         requested: image.to_string(),
         path: path.to_path_buf(),
-        is_floating: true,
+        is_floating: is_floating_image(image),
     }
 }
 

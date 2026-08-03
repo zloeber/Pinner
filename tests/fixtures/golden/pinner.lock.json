@@ -1,0 +1,37 @@
+{
+  "version": 1,
+  "generated_at": "2026-08-03T15:00:00Z",
+  "pinner_version": "0.1.0",
+  "entries": [
+    {
+      "ecosystem": "mise",
+      "name": "node",
+      "requested": "latest",
+      "pinned": "22.11.0",
+      "source": "manifest",
+      "path": ".mise.toml",
+      "evidence": "tool",
+      "metadata": {}
+    },
+    {
+      "ecosystem": "mise",
+      "name": "python",
+      "requested": "3.12",
+      "pinned": "3.12.7",
+      "source": "manifest",
+      "path": ".mise.toml",
+      "evidence": "tool",
+      "metadata": {}
+    },
+    {
+      "ecosystem": "mise",
+      "name": "ruby",
+      "requested": "latest",
+      "pinned": "3.3.5",
+      "source": "manifest",
+      "path": ".tool-versions",
+      "evidence": "tool",
+      "metadata": {}
+    }
+  ]
+}

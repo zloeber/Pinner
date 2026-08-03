@@ -13,15 +13,20 @@ pub(crate) fn extract(
         let Some((name, ref_)) = split_owner_action_ref(&uses) else {
             continue;
         };
-        if !is_floating_ref(ref_) {
-            continue;
-        }
+        let floating = is_floating_ref(ref_);
+        // Floating refs keep owner/action@ref (resolve-map key). Pinned SHAs use the
+        // bare SHA so check can match lock entries where requested == pinned == sha.
+        let requested = if floating {
+            format!("{name}@{ref_}")
+        } else {
+            ref_.to_string()
+        };
         findings.push(Finding {
             ecosystem: EcosystemKind::Actions,
             name: name.to_string(),
-            requested: format!("{name}@{ref_}"),
+            requested,
             path: manifest.path.clone(),
-            is_floating: true,
+            is_floating: floating,
         });
     }
     Ok(findings)
