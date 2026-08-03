@@ -4,6 +4,8 @@ use thiserror::Error;
 pub enum CoreError {
     #[error("pinner.lock.json is required for check")]
     MissingLock,
+    #[error("nothing to explain for target: {0}")]
+    ExplainTargetNotFound(String),
     #[error("io error: {0}")]
     Io(#[from] std::io::Error),
     #[error("ecosystem error: {0}")]

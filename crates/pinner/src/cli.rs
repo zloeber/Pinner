@@ -35,12 +35,12 @@ pub enum Commands {
     Pin,
     /// Report drift against pinner.lock.json without writing
     Check,
-    /// Audit findings (not implemented yet)
+    /// Report floating refs (text/JSON); `--fix` applies pin
     Audit {
         #[arg(long)]
         fix: bool,
     },
-    /// Explain a pin or finding (not implemented yet)
+    /// Explain why a pin was chosen (name or path substring)
     Explain { target: String },
     /// Detect or install resolver toolchain binaries
     #[command(subcommand)]

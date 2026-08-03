@@ -12,7 +12,7 @@ use crate::lock::{LockEntry, LockFile};
 use crate::policy::{AllowFloating, Policy};
 use crate::report::{DriftItem, RunReport};
 
-const LOCK_NAME: &str = "pinner.lock.json";
+pub(crate) const LOCK_NAME: &str = "pinner.lock.json";
 
 pub struct RunOptions {
     pub repo: PathBuf,
@@ -44,11 +44,8 @@ pub fn pin(
     let mut report = RunReport::default();
     let mut graph_pins = Vec::new();
     for ecosystem in &selected {
-        let manifests = discover_manifests(ecosystem.as_ref(), policy, &opts.repo)?;
-        let mut all_findings = Vec::new();
-        for manifest in &manifests {
-            all_findings.extend(ecosystem.extract(manifest, &ctx)?);
-        }
+        let (manifests, all_findings) =
+            discover_and_extract(ecosystem.as_ref(), policy, &opts.repo, &ctx)?;
 
         let floating: Vec<_> = all_findings
             .iter()
@@ -117,11 +114,8 @@ pub fn check(
     };
 
     for ecosystem in selected_ecosystems(ecosystems, policy, opts) {
-        let manifests = discover_manifests(ecosystem.as_ref(), policy, &opts.repo)?;
-        let mut extracted = Vec::new();
-        for manifest in &manifests {
-            extracted.extend(ecosystem.extract(manifest, &ctx)?);
-        }
+        let (_manifests, extracted) =
+            discover_and_extract(ecosystem.as_ref(), policy, &opts.repo, &ctx)?;
 
         for pin in lock_pins
             .iter()
@@ -159,7 +153,7 @@ pub fn check(
     Ok(report)
 }
 
-fn selected_ecosystems<'a>(
+pub(crate) fn selected_ecosystems<'a>(
     ecosystems: &'a [Arc<dyn Ecosystem>],
     policy: &Policy,
     opts: &RunOptions,
@@ -173,7 +167,7 @@ fn selected_ecosystems<'a>(
     })
 }
 
-fn discover_manifests(
+pub(crate) fn discover_manifests(
     ecosystem: &dyn Ecosystem,
     policy: &Policy,
     repo: &Path,
@@ -188,12 +182,27 @@ fn discover_manifests(
         .collect())
 }
 
-fn is_allowlisted(finding: &Finding, policy: &Policy, repo: &Path) -> bool {
+pub(crate) fn is_allowlisted(finding: &Finding, policy: &Policy, repo: &Path) -> bool {
     policy.allow_floating.iter().any(|allowed| {
         allowed.ecosystem == finding.ecosystem
             && allowed.name == finding.name
             && path_matches(allowed, &finding.path, repo)
     })
+}
+
+/// Discover manifests and extract findings for one ecosystem (shared by pin/check/audit/explain).
+pub(crate) fn discover_and_extract(
+    ecosystem: &dyn Ecosystem,
+    policy: &Policy,
+    repo: &Path,
+    ctx: &EcosystemCtx<'_>,
+) -> Result<(Vec<Manifest>, Vec<Finding>), CoreError> {
+    let manifests = discover_manifests(ecosystem, policy, repo)?;
+    let mut findings = Vec::new();
+    for manifest in &manifests {
+        findings.extend(ecosystem.extract(manifest, ctx)?);
+    }
+    Ok((manifests, findings))
 }
 
 fn path_matches(allowed: &AllowFloating, path: &Path, repo: &Path) -> bool {
@@ -321,7 +330,7 @@ fn dedupe_pins(pins: Vec<Pin>) -> Vec<Pin> {
     out
 }
 
-fn lock_to_pins(lock: LockFile) -> Vec<Pin> {
+pub(crate) fn lock_to_pins(lock: LockFile) -> Vec<Pin> {
     lock.entries.into_iter().map(entry_to_pin).collect()
 }
 

@@ -5,7 +5,7 @@ use std::process::ExitCode;
 use std::sync::Arc;
 
 use clap::Parser;
-use pinner_core::{Policy, RunOptions, RunReport, check, pin};
+use pinner_core::{ExplainReport, Policy, RunOptions, RunReport, audit, check, explain, pin};
 use pinner_ecosystem::{Ecosystem, EcosystemKind};
 use pinner_toolchain::{ToolStatus, ensure, status};
 
@@ -27,13 +27,28 @@ fn main() -> ExitCode {
 
 fn run(cli: Cli) -> CliResult<ExitCode> {
     match &cli.cmd {
-        Commands::Audit { fix: _ } => {
-            eprintln!("not implemented");
-            Ok(ExitCode::from(2))
+        Commands::Audit { fix } => {
+            let (policy, opts, ecosystems) = prepare(&cli)?;
+            if *fix {
+                // Pin only the floating non-allowlisted findings audit would report.
+                let report = pin(&ecosystems, &policy, &opts)?;
+                emit_report(&report, cli.format)?;
+                Ok(ExitCode::SUCCESS)
+            } else {
+                let report = audit(&ecosystems, &policy, &opts)?;
+                emit_audit(&report, cli.format)?;
+                if report.findings.is_empty() {
+                    Ok(ExitCode::SUCCESS)
+                } else {
+                    Ok(ExitCode::from(1))
+                }
+            }
         }
-        Commands::Explain { target: _ } => {
-            eprintln!("not implemented");
-            Ok(ExitCode::from(2))
+        Commands::Explain { target } => {
+            let (policy, opts, ecosystems) = prepare(&cli)?;
+            let report = explain(&ecosystems, &policy, &opts, target)?;
+            emit_explain(&report, cli.format)?;
+            Ok(ExitCode::SUCCESS)
         }
         Commands::Toolchain(cmd) => run_toolchain(&cli, cmd),
         Commands::Pin => {
@@ -161,6 +176,15 @@ fn emit_report(report: &RunReport, format: Format) -> Result<(), Box<dyn std::er
                 report.findings.len(),
                 report.drift.len()
             );
+            for finding in &report.findings {
+                println!(
+                    "finding {} {} requested={} floating={}",
+                    finding.path.display(),
+                    finding.name,
+                    finding.requested,
+                    finding.is_floating
+                );
+            }
             for item in &report.drift {
                 println!(
                     "drift {} {} expected={} actual={}",
@@ -170,6 +194,51 @@ fn emit_report(report: &RunReport, format: Format) -> Result<(), Box<dyn std::er
                     item.actual
                 );
             }
+        }
+    }
+    Ok(())
+}
+
+fn emit_audit(report: &RunReport, format: Format) -> Result<(), Box<dyn std::error::Error>> {
+    match format {
+        Format::Json => {
+            // Compact findings-only payload (matches audit contract / CLI tests).
+            let payload = serde_json::json!({ "findings": report.findings });
+            println!("{}", serde_json::to_string(&payload)?);
+        }
+        Format::Text => {
+            if report.findings.is_empty() {
+                println!("no floating findings");
+            }
+            for finding in &report.findings {
+                println!(
+                    "{} {} requested={} path={}",
+                    finding.ecosystem.as_str(),
+                    finding.name,
+                    finding.requested,
+                    finding.path.display()
+                );
+            }
+        }
+    }
+    Ok(())
+}
+
+fn emit_explain(report: &ExplainReport, format: Format) -> Result<(), Box<dyn std::error::Error>> {
+    match format {
+        Format::Json => {
+            println!("{}", serde_json::to_string_pretty(report)?);
+        }
+        Format::Text => {
+            println!(
+                "{} @ {} requested={} pinned={} evidence={:?} — {}",
+                report.name,
+                report.path.display(),
+                report.requested,
+                report.pinned,
+                report.evidence,
+                report.detail
+            );
         }
     }
     Ok(())
