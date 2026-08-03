@@ -71,7 +71,9 @@ fn extracts_floating_chart_deps_and_gitops_versions() {
 
     let floating: Vec<_> = findings.iter().filter(|f| f.is_floating).collect();
     assert!(
-        floating.iter().any(|f| f.name == "redis" && f.requested == "*"),
+        floating
+            .iter()
+            .any(|f| f.name == "redis" && f.requested == "*"),
         "findings={findings:?}"
     );
     assert!(
@@ -149,12 +151,18 @@ fn resolve_and_rewrite_via_env_map() {
         .collect();
 
     let pins = eco.resolve(&findings, &ctx).unwrap();
-    assert!(pins.iter().any(|p| p.name == "redis" && p.pinned == "18.6.1"));
+    assert!(
+        pins.iter()
+            .any(|p| p.name == "redis" && p.pinned == "18.6.1")
+    );
     assert!(
         pins.iter()
             .any(|p| p.name == "postgresql" && p.pinned == "12.5.8")
     );
-    assert!(pins.iter().any(|p| p.name == "nginx" && p.pinned == "15.5.0"));
+    assert!(
+        pins.iter()
+            .any(|p| p.name == "nginx" && p.pinned == "15.5.0")
+    );
     assert!(
         pins.iter()
             .any(|p| p.name == "ingress-nginx" && p.pinned == "4.10.0")
@@ -176,7 +184,10 @@ fn resolve_and_rewrite_via_env_map() {
         redis.metadata.get("repository").and_then(|v| v.as_str()),
         Some("https://charts.bitnami.com/bitnami")
     );
-    let argo = pins.iter().find(|p| p.name == "argo-cd").expect("argo-cd pin");
+    let argo = pins
+        .iter()
+        .find(|p| p.name == "argo-cd")
+        .expect("argo-cd pin");
     assert_eq!(
         argo.metadata.get("repository").and_then(|v| v.as_str()),
         Some("https://argoproj.github.io/argo-helm")
@@ -294,20 +305,16 @@ dependencies:
         .collect();
     let pins = eco.resolve(&findings, &ctx).unwrap();
     assert_eq!(pins.len(), 2);
-    assert!(
-        pins.iter().any(|p| {
-            p.pinned == "18.6.1"
-                && p.metadata.get("repository").and_then(|v| v.as_str())
-                    == Some("https://charts.bitnami.com/bitnami")
-        })
-    );
-    assert!(
-        pins.iter().any(|p| {
-            p.pinned == "9.9.9"
-                && p.metadata.get("repository").and_then(|v| v.as_str())
-                    == Some("https://example.com/other-charts")
-        })
-    );
+    assert!(pins.iter().any(|p| {
+        p.pinned == "18.6.1"
+            && p.metadata.get("repository").and_then(|v| v.as_str())
+                == Some("https://charts.bitnami.com/bitnami")
+    }));
+    assert!(pins.iter().any(|p| {
+        p.pinned == "9.9.9"
+            && p.metadata.get("repository").and_then(|v| v.as_str())
+                == Some("https://example.com/other-charts")
+    }));
 
     let chart = &manifests[0];
     let rw = eco

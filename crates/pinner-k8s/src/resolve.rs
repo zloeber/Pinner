@@ -2,15 +2,13 @@ use std::collections::HashMap;
 use std::env;
 use std::path::PathBuf;
 
-use pinner_ecosystem::{
-    EcosystemCtx, EcosystemError, EcosystemKind, EvidenceKind, Finding, Pin,
-};
+use pinner_ecosystem::{EcosystemCtx, EcosystemError, EcosystemKind, EvidenceKind, Finding, Pin};
 use pinner_iac_common::{parse_resolve_map, resolve_image_digest, resolve_map_lookup};
 use pinner_toolchain::{CommandRunner, RealCommandRunner};
 use serde_json::{Map, Value};
 
-use crate::extract::{image_tag, kind_lookup};
 use crate::K8sEcosystem;
+use crate::extract::{image_tag, kind_lookup};
 
 impl K8sEcosystem {
     pub(crate) fn resolve_findings(

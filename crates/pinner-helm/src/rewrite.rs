@@ -122,7 +122,11 @@ fn rewrite_gitops_yaml(path: &Path, pins: &[Pin]) -> Result<String, EcosystemErr
 }
 
 fn rewrite_gitops_doc(value: &mut Value, pins: &[Pin]) {
-    let Some(kind) = value.get("kind").and_then(|k| k.as_str()).map(str::to_string) else {
+    let Some(kind) = value
+        .get("kind")
+        .and_then(|k| k.as_str())
+        .map(str::to_string)
+    else {
         return;
     };
     match kind.as_str() {

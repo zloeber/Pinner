@@ -1,7 +1,7 @@
 use std::path::Path;
 
 use pinner_ecosystem::{
-    repo_relative, EcosystemCtx, EcosystemError, EcosystemKind, Finding, Manifest,
+    EcosystemCtx, EcosystemError, EcosystemKind, Finding, Manifest, repo_relative,
 };
 use serde::Deserialize;
 use serde_yaml::Value;

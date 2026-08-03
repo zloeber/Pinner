@@ -64,7 +64,11 @@ fn rewrite_yaml(path: &Path, pins: &[Pin]) -> Result<String, EcosystemError> {
 }
 
 fn rewrite_doc(value: &mut Value, by_requested: &HashMap<&str, &str>) {
-    let Some(kind) = value.get("kind").and_then(|k| k.as_str()).map(str::to_string) else {
+    let Some(kind) = value
+        .get("kind")
+        .and_then(|k| k.as_str())
+        .map(str::to_string)
+    else {
         return;
     };
     if !is_target_kind(&kind) {
@@ -89,11 +93,7 @@ fn pod_spec_mut<'a>(value: &'a mut Value, kind: &str) -> Option<&'a mut Value> {
     }
 }
 
-fn rewrite_container_list(
-    pod_spec: &mut Value,
-    field: &str,
-    by_requested: &HashMap<&str, &str>,
-) {
+fn rewrite_container_list(pod_spec: &mut Value, field: &str, by_requested: &HashMap<&str, &str>) {
     let Some(containers) = pod_spec.get_mut(field).and_then(|c| c.as_sequence_mut()) else {
         return;
     };

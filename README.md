@@ -186,6 +186,7 @@ task fmt              # cargo fmt
 task fmt:check        # formatting gate
 task clippy           # clippy -D warnings
 task ci               # fmt:check + clippy + test + schema
+task ci:local         # lean CI summary (preferred before push)
 task docs             # build mdBook into ./book (requires mdbook)
 task run -- pin --dry-run
 task pinner:audit
@@ -216,3 +217,19 @@ The release workflow verifies the tag matches Cargo.toml, builds for Linux (x86_
 ### GitHub Pages setup (one-time)
 
 In the repo **Settings → Pages**, set **Source** to **GitHub Actions**. The first successful `docs` workflow on `main` publishes the site.
+
+### Local CI before push
+
+Agents and humans should run the lean gate before pushing:
+
+```bash
+scripts/ci-local          # fmt + clippy + test + schema (short output)
+```
+
+Cursor enforces this via `.cursor/rules/pre-push-local-ci.mdc` and a `beforeShellExecution` hook on `git push`. Optional git hook:
+
+```bash
+git config core.hooksPath .githooks   # local only
+```
+
+Emergency skip: `PINNER_SKIP_LOCAL_CI=1 git push`.

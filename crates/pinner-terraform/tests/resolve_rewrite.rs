@@ -12,9 +12,7 @@ fn resolve_and_rewrite_via_env_map() {
     unsafe {
         std::env::set_var(
             "PINNER_TERRAFORM_RESOLVE_MAP",
-            format!(
-                "vpc@~> 5.0=5.1.0,hashicorp/aws@~> 5.0=5.100.0,git_mod@{GIT_SOURCE}={GIT_SHA}"
-            ),
+            format!("vpc@~> 5.0=5.1.0,hashicorp/aws@~> 5.0=5.100.0,git_mod@{GIT_SOURCE}={GIT_SHA}"),
         );
     }
 
@@ -41,16 +39,11 @@ fn resolve_and_rewrite_via_env_map() {
         .collect();
 
     let pins = eco.resolve(&findings, &ctx).unwrap();
-    assert!(
-        pins.iter()
-            .any(|p| p.name == "vpc" && p.pinned == "5.1.0")
-    );
-    assert!(
-        pins.iter().any(|p| {
-            p.name == "git_mod"
-                && p.pinned == format!("git::https://example.com/org/mod.git?ref={GIT_SHA}")
-        })
-    );
+    assert!(pins.iter().any(|p| p.name == "vpc" && p.pinned == "5.1.0"));
+    assert!(pins.iter().any(|p| {
+        p.name == "git_mod"
+            && p.pinned == format!("git::https://example.com/org/mod.git?ref={GIT_SHA}")
+    }));
     assert!(
         pins.iter()
             .any(|p| p.name == "hashicorp/aws" && p.pinned == "5.100.0")

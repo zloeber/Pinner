@@ -38,11 +38,7 @@ fn defaults_enable_terraform_but_not_helm_or_k8s() {
 fn toml_can_enable_helm_and_k8s() {
     let dir = tempdir().unwrap();
     let path = dir.path().join("pinner.toml");
-    fs::write(
-        &path,
-        "[ecosystems]\nhelm = true\nk8s = true\n",
-    )
-    .unwrap();
+    fs::write(&path, "[ecosystems]\nhelm = true\nk8s = true\n").unwrap();
     let p = Policy::load(Some(&path)).unwrap();
     assert!(p.is_enabled(EcosystemKind::Helm));
     assert!(p.is_enabled(EcosystemKind::K8s));

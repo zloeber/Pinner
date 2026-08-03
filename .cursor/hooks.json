@@ -1,0 +1,13 @@
+{
+  "version": 1,
+  "hooks": {
+    "beforeShellExecution": [
+      {
+        "command": ".cursor/hooks/pre-push-ci.sh",
+        "matcher": "git\\s+push",
+        "failClosed": true,
+        "timeout": 600
+      }
+    ]
+  }
+}

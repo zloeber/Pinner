@@ -3,7 +3,7 @@ use std::env;
 use std::path::{Path, PathBuf};
 
 use pinner_ecosystem::{
-    absolute_in_repo, EcosystemCtx, EcosystemError, EcosystemKind, EvidenceKind, Finding, Pin,
+    EcosystemCtx, EcosystemError, EcosystemKind, EvidenceKind, Finding, Pin, absolute_in_repo,
 };
 use pinner_iac_common::{parse_resolve_map, resolve_map_lookup};
 use serde::Deserialize;
@@ -75,12 +75,7 @@ fn resolve_one(
     })
 }
 
-fn helm_pin(
-    finding: &Finding,
-    pinned: String,
-    evidence: EvidenceKind,
-    repository: String,
-) -> Pin {
+fn helm_pin(finding: &Finding, pinned: String, evidence: EvidenceKind, repository: String) -> Pin {
     let mut metadata = Map::new();
     metadata.insert("chart".into(), Value::String(finding.name.clone()));
     metadata.insert("repository".into(), Value::String(repository));
@@ -134,10 +129,9 @@ impl RepositoryQueue {
         let Some(rows) = self.by_path.get_mut(&finding.path) else {
             return String::new();
         };
-        if let Some(i) = rows
-            .iter()
-            .position(|(name, requested, _)| name == &finding.name && requested == &finding.requested)
-        {
+        if let Some(i) = rows.iter().position(|(name, requested, _)| {
+            name == &finding.name && requested == &finding.requested
+        }) {
             return rows.remove(i).2;
         }
         String::new()

@@ -4,7 +4,7 @@ use std::str::FromStr;
 use hcl_edit::expr::{Expression, Object, ObjectKey};
 use hcl_edit::structure::{Attribute, Block, Body};
 use pinner_ecosystem::{
-    repo_relative, EcosystemCtx, EcosystemError, EcosystemKind, Finding, Manifest,
+    EcosystemCtx, EcosystemError, EcosystemKind, Finding, Manifest, repo_relative,
 };
 
 pub(crate) fn extract(
@@ -86,9 +86,7 @@ fn module_requested_and_floating(source: &str, version: Option<&str>) -> (String
     }
     match version {
         None => (String::new(), true),
-        Some(v) if v.trim().is_empty() || v.eq_ignore_ascii_case("latest") => {
-            (v.to_string(), true)
-        }
+        Some(v) if v.trim().is_empty() || v.eq_ignore_ascii_case("latest") => (v.to_string(), true),
         Some(v) => (v.to_string(), !is_exact_version_constraint(v)),
     }
 }
@@ -137,10 +135,7 @@ fn is_exact_version_constraint(version: &str) -> bool {
     if version.is_empty() {
         return false;
     }
-    let version = version
-        .strip_prefix('=')
-        .map(str::trim)
-        .unwrap_or(version);
+    let version = version.strip_prefix('=').map(str::trim).unwrap_or(version);
     is_exact_semver(version)
 }
 
@@ -222,7 +217,8 @@ fn expr_str(expr: &Expression) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::{
-        is_exact_version_constraint, is_full_git_sha, is_local_module_source, module_requested_and_floating,
+        is_exact_version_constraint, is_full_git_sha, is_local_module_source,
+        module_requested_and_floating,
     };
 
     #[test]
@@ -271,7 +267,8 @@ mod tests {
         assert_eq!(req, source);
         assert!(floating);
 
-        let pinned = "git::https://example.com/org/mod.git?ref=11bd71901bbe5b1630ceea73d27597364c9af683";
+        let pinned =
+            "git::https://example.com/org/mod.git?ref=11bd71901bbe5b1630ceea73d27597364c9af683";
         let (req, floating) = module_requested_and_floating(pinned, None);
         assert_eq!(req, pinned);
         assert!(!floating);

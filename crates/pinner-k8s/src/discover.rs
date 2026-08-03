@@ -5,13 +5,7 @@ use pinner_ecosystem::{EcosystemError, EcosystemKind, Manifest};
 use serde::Deserialize;
 use walkdir::WalkDir;
 
-const TARGET_KINDS: &[&str] = &[
-    "Deployment",
-    "StatefulSet",
-    "DaemonSet",
-    "Job",
-    "CronJob",
-];
+const TARGET_KINDS: &[&str] = &["Deployment", "StatefulSet", "DaemonSet", "Job", "CronJob"];
 
 pub(crate) fn discover(repo: &Path) -> Result<Vec<Manifest>, EcosystemError> {
     let mut paths = BTreeSet::new();

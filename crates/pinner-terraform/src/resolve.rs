@@ -5,13 +5,13 @@ use std::str::FromStr;
 
 use hcl_edit::structure::Body;
 use pinner_ecosystem::{
-    absolute_in_repo, EcosystemCtx, EcosystemError, EcosystemKind, EvidenceKind, Finding, Pin,
+    EcosystemCtx, EcosystemError, EcosystemKind, EvidenceKind, Finding, Pin, absolute_in_repo,
 };
 use pinner_iac_common::{parse_resolve_map, resolve_git_sha, resolve_map_lookup};
 use pinner_toolchain::{CommandRunner, RealCommandRunner};
 
-use crate::git_source::{git_pinned_source, is_git_or_http_requested};
 use crate::TerraformEcosystem;
+use crate::git_source::{git_pinned_source, is_git_or_http_requested};
 
 impl TerraformEcosystem {
     pub(crate) fn resolve_findings(
@@ -69,13 +69,12 @@ fn resolve_one(
     }
 
     if is_git_or_http_requested(&finding.requested) {
-        let (repo_url, ref_name) = parse_git_source(&finding.requested).ok_or_else(|| {
-            EcosystemError::Resolve {
+        let (repo_url, ref_name) =
+            parse_git_source(&finding.requested).ok_or_else(|| EcosystemError::Resolve {
                 name: finding.name.clone(),
                 requested: finding.requested.clone(),
                 hint: "could not parse git module source for resolve".into(),
-            }
-        })?;
+            })?;
         let pinned = resolve_git_sha(runner, &repo_url, &ref_name).map_err(|hint| {
             EcosystemError::Resolve {
                 name: finding.name.clone(),
@@ -116,7 +115,6 @@ fn resolve_map_from_env() -> HashMap<String, String> {
     };
     parse_resolve_map(&raw)
 }
-
 
 /// Provider findings use registry-style `namespace/name` (or hostname-qualified) sources.
 fn is_provider_finding(finding: &Finding) -> bool {
@@ -206,10 +204,7 @@ mod tests {
     fn parse_git_source_strips_prefix_and_query() {
         assert_eq!(
             parse_git_source("git::https://example.com/org/mod.git?ref=main"),
-            Some((
-                "https://example.com/org/mod.git".into(),
-                "main".into()
-            ))
+            Some(("https://example.com/org/mod.git".into(), "main".into()))
         );
     }
 

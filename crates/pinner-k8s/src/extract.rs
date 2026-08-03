@@ -1,7 +1,7 @@
 use std::path::{Path, PathBuf};
 
 use pinner_ecosystem::{
-    repo_relative, EcosystemCtx, EcosystemError, EcosystemKind, Finding, Manifest,
+    EcosystemCtx, EcosystemError, EcosystemKind, Finding, Manifest, repo_relative,
 };
 use pinner_iac_common::image_name;
 use serde::Deserialize;
@@ -71,12 +71,7 @@ fn pod_spec_for_kind<'a>(value: &'a Value, kind: &str) -> Option<&'a Value> {
     }
 }
 
-fn push_container_images(
-    pod_spec: &Value,
-    kind: &str,
-    field: &str,
-    out: &mut Vec<WorkloadImage>,
-) {
+fn push_container_images(pod_spec: &Value, kind: &str, field: &str, out: &mut Vec<WorkloadImage>) {
     let Some(containers) = pod_spec.get(field).and_then(|c| c.as_sequence()) else {
         return;
     };

@@ -157,20 +157,23 @@ fn resolve_and_rewrite_via_env_map_sets_tag_and_kind_metadata() {
         .unwrap()
         .expect("deployment rewrite");
     assert!(
-        rw.new_contents
-            .contains("nginx@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"),
+        rw.new_contents.contains(
+            "nginx@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        ),
         "got:\n{}",
         rw.new_contents
     );
     assert!(
-        rw.new_contents
-            .contains("busybox@sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"),
+        rw.new_contents.contains(
+            "busybox@sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+        ),
         "initContainer pin missing:\n{}",
         rw.new_contents
     );
     assert!(
-        rw.new_contents
-            .contains("alpine@sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"),
+        rw.new_contents.contains(
+            "alpine@sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+        ),
         "untagged pin missing:\n{}",
         rw.new_contents
     );
@@ -194,13 +197,11 @@ fn resolve_and_rewrite_via_env_map_sets_tag_and_kind_metadata() {
         .filter(|p| p.path == Path::new("cronjob.yaml"))
         .cloned()
         .collect();
-    let rw = eco
-        .rewrite(cj, &cj_pins)
-        .unwrap()
-        .expect("cronjob rewrite");
+    let rw = eco.rewrite(cj, &cj_pins).unwrap().expect("cronjob rewrite");
     assert!(
-        rw.new_contents
-            .contains("python@sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"),
+        rw.new_contents.contains(
+            "python@sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
+        ),
         "got:\n{}",
         rw.new_contents
     );

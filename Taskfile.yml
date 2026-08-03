@@ -92,6 +92,11 @@ tasks:
       - task: test
       - task: test:schema
 
+  ci:local:
+    desc: Lean local CI with short actionable output (use before push)
+    cmds:
+      - ./scripts/ci-local
+
   docs:
     desc: Build mdBook documentation into ./book
     cmds:

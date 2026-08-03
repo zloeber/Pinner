@@ -1,9 +1,9 @@
 use std::collections::HashMap;
 use std::str::FromStr;
 
+use hcl_edit::Ident;
 use hcl_edit::expr::{Expression, Object, ObjectKey};
 use hcl_edit::structure::{Attribute, Body};
-use hcl_edit::Ident;
 use pinner_ecosystem::{EcosystemError, Manifest, Pin, Rewrite};
 
 use crate::git_source::{git_ref_for_rewrite, is_git_or_http_requested, rewrite_git_ref};
@@ -74,7 +74,9 @@ fn rewrite_file(path: &std::path::Path, pins: &[Pin]) -> Result<String, Ecosyste
                     continue;
                 };
                 let source = object_str(obj, "source").unwrap_or_else(|| key.clone());
-                let Some(pin) = by_name.get(source.as_str()).or_else(|| by_name.get(key.as_str()))
+                let Some(pin) = by_name
+                    .get(source.as_str())
+                    .or_else(|| by_name.get(key.as_str()))
                 else {
                     continue;
                 };
