@@ -2,8 +2,12 @@ use thiserror::Error;
 
 #[derive(Debug, Error)]
 pub enum CoreError {
+    #[error("pinner.lock.json is required for check")]
+    MissingLock,
     #[error("io error: {0}")]
     Io(#[from] std::io::Error),
+    #[error("ecosystem error: {0}")]
+    Ecosystem(#[from] pinner_ecosystem::EcosystemError),
     #[error("json error: {0}")]
     Json(#[from] serde_json::Error),
     #[error("unsupported lockfile version {0}; expected version 1")]
