@@ -6,4 +6,6 @@ license.workspace = true
 repository.workspace = true
 
 [dependencies]
+hcl-edit = { workspace = true }
 pinner-ecosystem = { workspace = true }
+walkdir = { workspace = true }
