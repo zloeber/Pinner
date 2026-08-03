@@ -1,3 +1,9 @@
+mod git;
+mod image;
+
+pub use git::resolve_git_sha;
+pub use image::{image_name, normalize_digest_ref, resolve_image_digest};
+
 use std::collections::HashMap;
 
 pub fn parse_resolve_map(raw: &str) -> HashMap<String, String> {

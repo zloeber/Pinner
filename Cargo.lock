@@ -807,6 +807,9 @@ dependencies = [
 [[package]]
 name = "pinner-iac-common"
 version = "0.1.0"
+dependencies = [
+ "pinner-toolchain",
+]
 
 [[package]]
 name = "pinner-k8s"
