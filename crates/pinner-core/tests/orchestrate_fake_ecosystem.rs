@@ -52,7 +52,9 @@ impl Ecosystem for FakeEco {
         findings
             .iter()
             .map(|f| {
-                if let Some(p) = ctx.lock_pins.iter().find(|p| p.name == f.name) {
+                if let Some(p) = ctx.lock_pins.iter().find(|p| {
+                    p.ecosystem == f.ecosystem && p.name == f.name && p.path == f.path
+                }) {
                     return Ok(p.clone());
                 }
                 if ctx.offline && f.is_floating {
@@ -83,6 +85,88 @@ impl Ecosystem for FakeEco {
         Ok(Some(Rewrite {
             path: manifest.path.clone(),
             new_contents: format!("[tools]\nnode = \"{}\"\n", pin.pinned),
+        }))
+    }
+}
+
+struct FakeNodeEco;
+
+impl Ecosystem for FakeNodeEco {
+    fn kind(&self) -> EcosystemKind {
+        EcosystemKind::Node
+    }
+
+    fn discover(&self, repo: &Path) -> Result<Vec<Manifest>, EcosystemError> {
+        Ok(vec![Manifest {
+            ecosystem: self.kind(),
+            path: repo.join("package.json"),
+        }])
+    }
+
+    fn extract(
+        &self,
+        manifest: &Manifest,
+        _ctx: &EcosystemCtx<'_>,
+    ) -> Result<Vec<Finding>, EcosystemError> {
+        let text = std::fs::read_to_string(&manifest.path).unwrap();
+        let floating = text.contains("\"^\"");
+        Ok(vec![Finding {
+            ecosystem: EcosystemKind::Node,
+            name: "left-pad".into(),
+            requested: if floating {
+                "^1.0.0".into()
+            } else {
+                "1.3.0".into()
+            },
+            path: manifest.path.clone(),
+            is_floating: floating,
+        }])
+    }
+
+    fn resolve(
+        &self,
+        findings: &[Finding],
+        ctx: &EcosystemCtx<'_>,
+    ) -> Result<Vec<Pin>, EcosystemError> {
+        findings
+            .iter()
+            .map(|f| {
+                if let Some(p) = ctx.lock_pins.iter().find(|p| {
+                    p.ecosystem == f.ecosystem && p.name == f.name && p.path == f.path
+                }) {
+                    return Ok(p.clone());
+                }
+                if ctx.offline && f.is_floating {
+                    return Err(EcosystemError::Offline {
+                        name: f.name.clone(),
+                        requested: f.requested.clone(),
+                    });
+                }
+                Ok(Pin {
+                    ecosystem: f.ecosystem,
+                    name: f.name.clone(),
+                    requested: f.requested.clone(),
+                    pinned: "1.3.0".into(),
+                    path: f.path.clone(),
+                    evidence: EvidenceKind::Tool,
+                    metadata: Default::default(),
+                })
+            })
+            .collect()
+    }
+
+    fn rewrite(
+        &self,
+        manifest: &Manifest,
+        pins: &[Pin],
+    ) -> Result<Option<Rewrite>, EcosystemError> {
+        let pin = &pins[0];
+        Ok(Some(Rewrite {
+            path: manifest.path.clone(),
+            new_contents: format!(
+                "{{\n  \"dependencies\": {{\n    \"{}\": \"{}\"\n  }}\n}}\n",
+                pin.name, pin.pinned
+            ),
         }))
     }
 }
@@ -160,4 +244,55 @@ fn check_reports_drift_after_pinned_manifest_becomes_floating() {
     let report = check(&[eco], &Policy::default_policy(), &options(dir.path())).unwrap();
 
     assert!(!report.drift.is_empty());
+}
+
+#[test]
+fn pin_with_ecosystem_filter_preserves_unselected_lock_entries() {
+    let dir = tempdir().unwrap();
+    std::fs::write(
+        dir.path().join(".mise.toml"),
+        "[tools]\nnode = \"latest\"\n",
+    )
+    .unwrap();
+    std::fs::write(
+        dir.path().join("package.json"),
+        "{\n  \"dependencies\": {\n    \"left-pad\": \"^1.0.0\"\n  }\n}\n",
+    )
+    .unwrap();
+
+    let mise: Arc<dyn Ecosystem> = Arc::new(FakeEco);
+    let node: Arc<dyn Ecosystem> = Arc::new(FakeNodeEco);
+    let ecosystems = [Arc::clone(&mise), Arc::clone(&node)];
+    let policy = Policy::default_policy();
+
+    pin(&ecosystems, &policy, &options(dir.path())).unwrap();
+    let lock_path = dir.path().join("pinner.lock.json");
+    let first = LockFile::read(&lock_path).unwrap();
+    assert_eq!(first.entries.len(), 2);
+    assert!(first.entries.iter().any(|e| e.ecosystem == EcosystemKind::Node));
+    assert!(first.entries.iter().any(|e| e.ecosystem == EcosystemKind::Mise));
+
+    let node_before = first
+        .entries
+        .iter()
+        .find(|e| e.ecosystem == EcosystemKind::Node)
+        .unwrap()
+        .clone();
+
+    let filtered = RunOptions {
+        ecosystems_filter: Some(vec![EcosystemKind::Mise]),
+        ..options(dir.path())
+    };
+    pin(&ecosystems, &policy, &filtered).unwrap();
+
+    let second = LockFile::read(&lock_path).unwrap();
+    assert_eq!(second.entries.len(), 2);
+    let node_after = second
+        .entries
+        .iter()
+        .find(|e| e.ecosystem == EcosystemKind::Node)
+        .expect("Node lock entry must remain after Mise-only pin");
+    assert_eq!(node_after.pinned, node_before.pinned);
+    assert_eq!(node_after.name, node_before.name);
+    assert_eq!(node_after.path, node_before.path);
 }

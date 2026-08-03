@@ -38,9 +38,12 @@ pub fn pin(
         pin_exact_ranges: policy.pin_exact_ranges,
     };
 
+    let selected: Vec<_> = selected_ecosystems(ecosystems, policy, opts).collect();
+    let selected_kinds: Vec<EcosystemKind> = selected.iter().map(|e| e.kind()).collect();
+
     let mut report = RunReport::default();
     let mut graph_pins = Vec::new();
-    for ecosystem in selected_ecosystems(ecosystems, policy, opts) {
+    for ecosystem in &selected {
         let manifests = discover_manifests(ecosystem.as_ref(), policy, &opts.repo)?;
         let mut all_findings = Vec::new();
         for manifest in &manifests {
@@ -76,7 +79,14 @@ pub fn pin(
         graph_pins.extend(pins_for_full_graph(&all_findings, &resolved, &lock_pins, policy, &opts.repo));
     }
 
-    report.pins = dedupe_pins(graph_pins);
+    // Preserve prior lock entries for ecosystems not visited this run, then overlay
+    // selected-ecosystem graph pins and dedupe by (ecosystem, path, name).
+    let mut combined: Vec<Pin> = lock_pins
+        .into_iter()
+        .filter(|pin| !selected_kinds.contains(&pin.ecosystem))
+        .collect();
+    combined.extend(graph_pins);
+    report.pins = dedupe_pins(combined);
 
     if !opts.dry_run {
         LockFile::from_pins(&report.pins, env!("CARGO_PKG_VERSION"), &generated_at())
