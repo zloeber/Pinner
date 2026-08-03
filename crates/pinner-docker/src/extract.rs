@@ -98,19 +98,9 @@ pub(crate) fn parse_from_image(line: &str) -> Option<String> {
         return None;
     }
 
-    let mut image = None;
-    while let Some(token) = parts.next() {
-        if token.starts_with("--") {
-            continue;
-        }
-        if token.eq_ignore_ascii_case("AS") {
-            // stage alias; image already captured
-            break;
-        }
-        image = Some(token.to_string());
-        break;
-    }
-    image
+    parts
+        .find(|token| !token.starts_with("--") && !token.eq_ignore_ascii_case("AS"))
+        .map(|token| token.to_string())
 }
 
 /// Floating if missing `@sha256:` digest (includes `:latest`, untagged, and other tags).
@@ -138,9 +128,7 @@ pub(crate) fn image_name(image: &str) -> String {
 fn find_tag_colon(image: &str) -> Option<usize> {
     // Prefer last ':' after the final '/'; if none, last ':' only when no '/'.
     let after_slash = image.rfind('/').map(|i| i + 1).unwrap_or(0);
-    image[after_slash..]
-        .rfind(':')
-        .map(|i| after_slash + i)
+    image[after_slash..].rfind(':').map(|i| after_slash + i)
 }
 
 #[cfg(test)]

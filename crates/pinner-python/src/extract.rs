@@ -25,10 +25,7 @@ fn is_requirements_file(name: &str) -> bool {
     name == "requirements.txt" || (name.starts_with("requirements") && name.ends_with(".txt"))
 }
 
-fn extract_pyproject(
-    path: &Path,
-    ctx: &EcosystemCtx<'_>,
-) -> Result<Vec<Finding>, EcosystemError> {
+fn extract_pyproject(path: &Path, ctx: &EcosystemCtx<'_>) -> Result<Vec<Finding>, EcosystemError> {
     let contents = std::fs::read_to_string(path)?;
     let value: toml::Value = toml::from_str(&contents).map_err(|e| EcosystemError::Parse {
         path: path.to_path_buf(),
@@ -168,9 +165,7 @@ fn parse_pep508(req: &str) -> Option<(String, String)> {
 
     // Drop extras: [security,socks]
     if rest.starts_with('[') {
-        let Some(end) = rest.find(']') else {
-            return None;
-        };
+        let end = rest.find(']')?;
         rest = rest[end + 1..].trim_start();
     }
 

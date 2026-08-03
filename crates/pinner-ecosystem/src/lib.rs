@@ -122,9 +122,6 @@ pub trait Ecosystem: Send + Sync {
         findings: &[Finding],
         ctx: &EcosystemCtx<'_>,
     ) -> Result<Vec<Pin>, EcosystemError>;
-    fn rewrite(
-        &self,
-        manifest: &Manifest,
-        pins: &[Pin],
-    ) -> Result<Option<Rewrite>, EcosystemError>;
+    fn rewrite(&self, manifest: &Manifest, pins: &[Pin])
+    -> Result<Option<Rewrite>, EcosystemError>;
 }

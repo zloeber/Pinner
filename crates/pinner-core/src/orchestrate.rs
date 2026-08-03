@@ -59,9 +59,7 @@ pub fn pin(
 
         let floating: Vec<_> = all_findings
             .iter()
-            .filter(|finding| {
-                finding.is_floating && !is_allowlisted(finding, policy, &opts.repo)
-            })
+            .filter(|finding| finding.is_floating && !is_allowlisted(finding, policy, &opts.repo))
             .cloned()
             .collect();
 
@@ -317,8 +315,7 @@ fn write_lock_idempotent(lock_path: &Path, pins: &[Pin]) -> Result<(), CoreError
     let pinner_version = env!("CARGO_PKG_VERSION");
     match LockFile::read(lock_path) {
         Ok(existing) => {
-            let candidate =
-                LockFile::from_pins(pins, pinner_version, &existing.generated_at);
+            let candidate = LockFile::from_pins(pins, pinner_version, &existing.generated_at);
             if lock_substantive_eq(&existing, &candidate) {
                 return Ok(());
             }

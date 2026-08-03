@@ -1,4 +1,4 @@
-use pinner_ecosystem::{Ecosystem, EcosystemCtx, EvidenceKind, Finding, EcosystemKind};
+use pinner_ecosystem::{Ecosystem, EcosystemCtx, EcosystemKind, EvidenceKind, Finding};
 use pinner_node::NodeEcosystem;
 use std::fs;
 use std::path::{Path, PathBuf};

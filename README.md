@@ -98,8 +98,41 @@ See [`.github/workflows/consumer-example.yml`](.github/workflows/consumer-exampl
 
 ## Development
 
+Tooling for this repo is pinned in [`.mise.toml`](.mise.toml) and orchestrated via [Taskfile.yml](Taskfile.yml) ([taskfile.dev](https://taskfile.dev)).
+
+### Bootstrap
+
 ```bash
-cargo test --workspace
+# Install mise if needed: https://mise.jdx.dev/getting-started.html
+mise trust
+mise install          # rust (+rustfmt/clippy), node, uv, gh, task
+task setup            # verifies binaries (docker is optional/host-provided)
+```
+
+Pinned tools:
+
+| Tool | Purpose |
+|------|---------|
+| `rust` 1.96.0 (+ rustfmt, clippy) | Build and test Pinner |
+| `node` / `npm` | Node ecosystem resolver evidence |
+| `uv` | Python ecosystem resolver evidence |
+| `gh` | GitHub Actions resolve |
+| `task` | Task runner |
+| `docker` | Host-installed only (not via mise) |
+
+### Common tasks
+
+```bash
+task                  # list tasks
+task setup            # mise install + version smoke checks
+task build            # cargo build --workspace
+task test             # cargo test --workspace
+task fmt              # cargo fmt
+task fmt:check        # formatting gate
+task clippy           # clippy -D warnings
+task ci               # fmt:check + clippy + test + schema
+task run -- pin --dry-run
+task pinner:audit
 ```
 
 Fixture matrix under `tests/fixtures/*-floating` covers mise, node, python, docker, and actions.

@@ -11,9 +11,8 @@ pub(crate) fn discover(repo: &Path) -> Result<Vec<Manifest>, EcosystemError> {
         .into_iter()
         .filter_entry(|e| !should_skip(e.path()))
     {
-        let entry = entry.map_err(|e| {
-            EcosystemError::Io(std::io::Error::other(format!("walkdir: {e}")))
-        })?;
+        let entry = entry
+            .map_err(|e| EcosystemError::Io(std::io::Error::other(format!("walkdir: {e}"))))?;
         if !entry.file_type().is_file() {
             continue;
         }
@@ -34,8 +33,7 @@ pub(crate) fn discover(repo: &Path) -> Result<Vec<Manifest>, EcosystemError> {
 
 fn is_requirements_file(name: &str) -> bool {
     // requirements.txt, requirements-dev.txt, requirements_test.txt, etc.
-    name == "requirements.txt"
-        || (name.starts_with("requirements") && name.ends_with(".txt"))
+    name == "requirements.txt" || (name.starts_with("requirements") && name.ends_with(".txt"))
 }
 
 fn should_skip(path: &Path) -> bool {

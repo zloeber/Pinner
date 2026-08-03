@@ -75,7 +75,11 @@ fn pin_then_check_is_clean_and_idempotent() {
         .assert()
         .success();
 
-    assert_eq!(file_hash(&lock), lock_before, "second pin must not change lock");
+    assert_eq!(
+        file_hash(&lock),
+        lock_before,
+        "second pin must not change lock"
+    );
     assert_eq!(
         file_hash(&mise_toml),
         toml_before,

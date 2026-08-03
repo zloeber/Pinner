@@ -108,9 +108,7 @@ mod tests {
         assert!(is_floating_ref("v4"));
         assert!(is_floating_ref("main"));
         assert!(is_floating_ref("11bd719")); // short sha
-        assert!(!is_floating_ref(
-            "11bd71901bbe5b1630ceea73d27597364c9af683"
-        ));
+        assert!(!is_floating_ref("11bd71901bbe5b1630ceea73d27597364c9af683"));
         assert!(!is_floating_ref(
             "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
         ));

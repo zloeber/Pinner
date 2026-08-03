@@ -72,13 +72,12 @@ fn resolve_one(
         });
     }
 
-    let pinned = resolve_via_uv_pip_compile(runner, finding).map_err(|hint| {
-        EcosystemError::Resolve {
+    let pinned =
+        resolve_via_uv_pip_compile(runner, finding).map_err(|hint| EcosystemError::Resolve {
             name: finding.name.clone(),
             requested: finding.requested.clone(),
             hint,
-        }
-    })?;
+        })?;
 
     Ok(Pin {
         ecosystem: EcosystemKind::Python,

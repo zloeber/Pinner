@@ -1,0 +1,12 @@
+# Developer / CI toolchain for the Pinner repository itself.
+# Install: mise trust && mise install
+#
+# Docker is not managed here — install Docker Engine / Desktop on the host
+# when exercising the docker ecosystem locally.
+
+[tools]
+rust = { version = "1.96.0", components = "rustfmt,clippy" }
+node = "26.5.1"
+uv = "0.12.1"
+gh = "2.97.0"
+task = "3.52.0"

@@ -1,5 +1,5 @@
 use pinner_core::lock::LockFile;
-use pinner_ecosystem::{EvidenceKind, EcosystemKind, Pin};
+use pinner_ecosystem::{EcosystemKind, EvidenceKind, Pin};
 use std::path::PathBuf;
 use tempfile::tempdir;
 

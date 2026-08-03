@@ -13,7 +13,11 @@ fn env_lock() -> &'static Mutex<()> {
 fn audit_json_reports_floating_mise_tool() {
     let _guard = env_lock().lock().unwrap();
     let dir = tempdir().unwrap();
-    std::fs::write(dir.path().join(".mise.toml"), "[tools]\nnode = \"latest\"\n").unwrap();
+    std::fs::write(
+        dir.path().join(".mise.toml"),
+        "[tools]\nnode = \"latest\"\n",
+    )
+    .unwrap();
     // SAFETY: test-only resolve seam; serialized via env_lock.
     unsafe {
         std::env::set_var("PINNER_MISE_RESOLVE_MAP", "node=22.11.0");
@@ -35,7 +39,11 @@ fn audit_json_reports_floating_mise_tool() {
 fn explain_after_pin_shows_evidence() {
     let _guard = env_lock().lock().unwrap();
     let dir = tempdir().unwrap();
-    std::fs::write(dir.path().join(".mise.toml"), "[tools]\nnode = \"latest\"\n").unwrap();
+    std::fs::write(
+        dir.path().join(".mise.toml"),
+        "[tools]\nnode = \"latest\"\n",
+    )
+    .unwrap();
     // SAFETY: test-only resolve seam; serialized via env_lock.
     unsafe {
         std::env::set_var("PINNER_MISE_RESOLVE_MAP", "node=22.11.0");

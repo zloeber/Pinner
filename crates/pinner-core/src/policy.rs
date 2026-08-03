@@ -106,7 +106,11 @@ impl Policy {
             apply_ecosystem(&mut self.enabled, EcosystemKind::Node, ecosystems.node);
             apply_ecosystem(&mut self.enabled, EcosystemKind::Python, ecosystems.python);
             apply_ecosystem(&mut self.enabled, EcosystemKind::Docker, ecosystems.docker);
-            apply_ecosystem(&mut self.enabled, EcosystemKind::Actions, ecosystems.actions);
+            apply_ecosystem(
+                &mut self.enabled,
+                EcosystemKind::Actions,
+                ecosystems.actions,
+            );
         }
 
         if let Some(ignore) = file.ignore {
@@ -114,16 +118,16 @@ impl Policy {
             self.ignore_matcher = build_matcher(&self.ignore_globs)?;
         }
 
-        if let Some(toolchain) = file.toolchain {
-            if let Some(install) = toolchain.install {
-                self.toolchain_install = install;
-            }
+        if let Some(toolchain) = file.toolchain
+            && let Some(install) = toolchain.install
+        {
+            self.toolchain_install = install;
         }
 
-        if let Some(pinning) = file.pinning {
-            if let Some(exact_ranges) = pinning.exact_ranges {
-                self.pin_exact_ranges = exact_ranges;
-            }
+        if let Some(pinning) = file.pinning
+            && let Some(exact_ranges) = pinning.exact_ranges
+        {
+            self.pin_exact_ranges = exact_ranges;
         }
 
         Ok(())

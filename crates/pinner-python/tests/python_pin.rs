@@ -22,7 +22,11 @@ fn extracts_unpinned_requirement() {
         .iter()
         .flat_map(|m| eco.extract(m, &ctx).unwrap())
         .collect();
-    assert!(findings.iter().any(|f| f.name == "requests" && f.is_floating));
+    assert!(
+        findings
+            .iter()
+            .any(|f| f.name == "requests" && f.is_floating)
+    );
 }
 
 #[test]

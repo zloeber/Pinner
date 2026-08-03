@@ -187,8 +187,9 @@ mod tests {
                 ecosystem: EcosystemKind::Docker,
                 name: "alpine".into(),
                 requested: "alpine:latest".into(),
-                pinned: "alpine@sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
-                    .into(),
+                pinned:
+                    "alpine@sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+                        .into(),
                 path: PathBuf::from("compose.yaml"),
                 evidence: EvidenceKind::Registry,
                 metadata: Default::default(),
@@ -197,8 +198,9 @@ mod tests {
                 ecosystem: EcosystemKind::Docker,
                 name: "python".into(),
                 requested: "python:3.12".into(),
-                pinned: "python@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
-                    .into(),
+                pinned:
+                    "python@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+                        .into(),
                 path: PathBuf::from("compose.yaml"),
                 evidence: EvidenceKind::Registry,
                 metadata: Default::default(),

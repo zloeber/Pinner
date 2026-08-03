@@ -11,9 +11,8 @@ pub(crate) fn discover(repo: &Path) -> Result<Vec<Manifest>, EcosystemError> {
         .into_iter()
         .filter_entry(|e| !should_skip(e.path()))
     {
-        let entry = entry.map_err(|e| {
-            EcosystemError::Io(std::io::Error::other(format!("walkdir: {e}")))
-        })?;
+        let entry = entry
+            .map_err(|e| EcosystemError::Io(std::io::Error::other(format!("walkdir: {e}"))))?;
         if !entry.file_type().is_file() {
             continue;
         }
@@ -36,7 +35,7 @@ pub(crate) fn discover(repo: &Path) -> Result<Vec<Manifest>, EcosystemError> {
 fn is_workflow(path: &Path) -> bool {
     let mut comps = path.components().map(|c| c.as_os_str());
     let mut saw_github = false;
-    while let Some(c) = comps.next() {
+    for c in comps.by_ref() {
         if c == ".github" {
             saw_github = true;
             break;
@@ -78,7 +77,9 @@ mod tests {
     #[test]
     fn detects_workflow_and_action_yml() {
         assert!(is_workflow(Path::new(".github/workflows/ci.yml")));
-        assert!(is_workflow(Path::new("repo/.github/workflows/release.yaml")));
+        assert!(is_workflow(Path::new(
+            "repo/.github/workflows/release.yaml"
+        )));
         assert!(!is_workflow(Path::new(".github/dependabot.yml")));
         assert!(is_action_yml(Path::new("actions/setup/action.yml")));
         assert!(is_action_yml(Path::new("action.yaml")));

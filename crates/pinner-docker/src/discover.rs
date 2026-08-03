@@ -11,9 +11,8 @@ pub(crate) fn discover(repo: &Path) -> Result<Vec<Manifest>, EcosystemError> {
         .into_iter()
         .filter_entry(|e| !should_skip(e.path()))
     {
-        let entry = entry.map_err(|e| {
-            EcosystemError::Io(std::io::Error::other(format!("walkdir: {e}")))
-        })?;
+        let entry = entry
+            .map_err(|e| EcosystemError::Io(std::io::Error::other(format!("walkdir: {e}"))))?;
         if !entry.file_type().is_file() {
             continue;
         }

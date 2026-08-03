@@ -46,11 +46,9 @@ pub fn audit(
         let (_manifests, extracted) =
             discover_and_extract(ecosystem.as_ref(), policy, &opts.repo, &ctx)?;
         report.findings.extend(
-            extracted
-                .into_iter()
-                .filter(|finding| {
-                    finding.is_floating && !is_allowlisted(finding, policy, &opts.repo)
-                }),
+            extracted.into_iter().filter(|finding| {
+                finding.is_floating && !is_allowlisted(finding, policy, &opts.repo)
+            }),
         );
     }
     Ok(report)

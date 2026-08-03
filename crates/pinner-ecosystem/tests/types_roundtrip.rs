@@ -1,5 +1,5 @@
 // crates/pinner-ecosystem/tests/types_roundtrip.rs
-use pinner_ecosystem::{EvidenceKind, EcosystemKind, Pin};
+use pinner_ecosystem::{EcosystemKind, EvidenceKind, Pin};
 use std::path::PathBuf;
 
 #[test]

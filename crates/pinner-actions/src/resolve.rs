@@ -1,9 +1,7 @@
 use std::collections::HashMap;
 use std::env;
 
-use pinner_ecosystem::{
-    EcosystemCtx, EcosystemError, EcosystemKind, EvidenceKind, Finding, Pin,
-};
+use pinner_ecosystem::{EcosystemCtx, EcosystemError, EcosystemKind, EvidenceKind, Finding, Pin};
 use pinner_toolchain::{CommandRunner, RealCommandRunner};
 
 use crate::ActionsEcosystem;
@@ -168,9 +166,7 @@ mod tests {
 
     #[test]
     fn parse_resolve_map_entries() {
-        let map = parse_resolve_map(
-            "actions/checkout@v4=11bd71901bbe5b1630ceea73d27597364c9af683",
-        );
+        let map = parse_resolve_map("actions/checkout@v4=11bd71901bbe5b1630ceea73d27597364c9af683");
         assert_eq!(
             map.get("actions/checkout@v4").map(String::as_str),
             Some("11bd71901bbe5b1630ceea73d27597364c9af683")

@@ -58,7 +58,9 @@ fn rewrite_requirements(path: &Path, pins: &[Pin]) -> Result<String, EcosystemEr
             trimmed
         };
         let marker = code.find(';').map(|i| &code[i..]);
-        let before_marker = marker.map(|m| &code[..code.len() - m.len()]).unwrap_or(code);
+        let before_marker = marker
+            .map(|m| &code[..code.len() - m.len()])
+            .unwrap_or(code);
         let name = package_name(before_marker.trim());
 
         if let Some(name) = name
@@ -138,9 +140,7 @@ fn rewrite_pyproject(path: &Path, pins: &[Pin]) -> Result<String, EcosystemError
             if *name == "python" {
                 continue;
             }
-            let exists = doc["tool"]["poetry"]["dependencies"]
-                .get(name)
-                .is_some();
+            let exists = doc["tool"]["poetry"]["dependencies"].get(name).is_some();
             if exists {
                 doc["tool"]["poetry"]["dependencies"][name] =
                     Item::Value(Value::from(format!("=={pinned}")));

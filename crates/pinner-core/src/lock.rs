@@ -1,6 +1,6 @@
 use std::path::{Path, PathBuf};
 
-use pinner_ecosystem::{EvidenceKind, EcosystemKind, Pin};
+use pinner_ecosystem::{EcosystemKind, EvidenceKind, Pin};
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 
@@ -52,16 +52,11 @@ impl LockFile {
     pub fn write(&self, path: &Path) -> Result<(), CoreError> {
         let mut lock = self.clone();
         lock.entries.sort_by(|a, b| {
-            (
-                a.ecosystem.as_str(),
-                a.path.as_path(),
-                a.name.as_str(),
-            )
-                .cmp(&(
-                    b.ecosystem.as_str(),
-                    b.path.as_path(),
-                    b.name.as_str(),
-                ))
+            (a.ecosystem.as_str(), a.path.as_path(), a.name.as_str()).cmp(&(
+                b.ecosystem.as_str(),
+                b.path.as_path(),
+                b.name.as_str(),
+            ))
         });
         let bytes = serde_json::to_vec_pretty(&lock)?;
         std::fs::write(path, bytes)?;

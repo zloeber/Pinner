@@ -1,9 +1,7 @@
 use std::collections::HashMap;
 use std::env;
 
-use pinner_ecosystem::{
-    EcosystemCtx, EcosystemError, EcosystemKind, EvidenceKind, Finding, Pin,
-};
+use pinner_ecosystem::{EcosystemCtx, EcosystemError, EcosystemKind, EvidenceKind, Finding, Pin};
 use pinner_toolchain::CommandRunner;
 
 use crate::MiseEcosystem;
@@ -57,13 +55,12 @@ fn resolve_one(
         });
     }
 
-    let pinned = resolve_via_mise(runner, &finding.name).map_err(|hint| {
-        EcosystemError::Resolve {
+    let pinned =
+        resolve_via_mise(runner, &finding.name).map_err(|hint| EcosystemError::Resolve {
             name: finding.name.clone(),
             requested: finding.requested.clone(),
             hint,
-        }
-    })?;
+        })?;
     Ok(tool_pin(finding, pinned))
 }
 

@@ -40,9 +40,7 @@ fn is_floating(requested: &str, pin_exact_ranges: bool) -> bool {
         return true;
     }
     if pin_exact_ranges
-        && (requested.starts_with('^')
-            || requested.starts_with('~')
-            || requested.starts_with(">="))
+        && (requested.starts_with('^') || requested.starts_with('~') || requested.starts_with(">="))
     {
         return true;
     }

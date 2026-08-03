@@ -22,9 +22,8 @@ pub(crate) fn discover(repo: &Path) -> Result<Vec<Manifest>, EcosystemError> {
         .into_iter()
         .filter_entry(|e| !is_node_modules(e.path()))
     {
-        let entry = entry.map_err(|e| {
-            EcosystemError::Io(std::io::Error::other(format!("walkdir: {e}")))
-        })?;
+        let entry = entry
+            .map_err(|e| EcosystemError::Io(std::io::Error::other(format!("walkdir: {e}"))))?;
         if entry.file_type().is_file() && entry.file_name() == "package.json" {
             paths.insert(entry.path().to_path_buf());
         }
@@ -40,15 +39,11 @@ pub(crate) fn discover(repo: &Path) -> Result<Vec<Manifest>, EcosystemError> {
 }
 
 fn is_node_modules(path: &Path) -> bool {
-    path.components()
-        .any(|c| c.as_os_str() == "node_modules")
+    path.components().any(|c| c.as_os_str() == "node_modules")
 }
 
 /// Expand `workspaces` globs one level from the root package.json.
-fn workspace_package_jsons(
-    repo: &Path,
-    root_pkg: &Path,
-) -> Result<Vec<PathBuf>, EcosystemError> {
+fn workspace_package_jsons(repo: &Path, root_pkg: &Path) -> Result<Vec<PathBuf>, EcosystemError> {
     let contents = std::fs::read_to_string(root_pkg)?;
     let value: Value = serde_json::from_str(&contents).map_err(|e| EcosystemError::Parse {
         path: root_pkg.to_path_buf(),
@@ -87,9 +82,8 @@ fn workspace_package_jsons(
         .into_iter()
         .filter_entry(|e| !is_node_modules(e.path()))
     {
-        let entry = entry.map_err(|e| {
-            EcosystemError::Io(std::io::Error::other(format!("walkdir: {e}")))
-        })?;
+        let entry = entry
+            .map_err(|e| EcosystemError::Io(std::io::Error::other(format!("walkdir: {e}"))))?;
         if !entry.file_type().is_file() || entry.file_name() != "package.json" {
             continue;
         }

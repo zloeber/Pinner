@@ -52,9 +52,11 @@ impl Ecosystem for FakeEco {
         findings
             .iter()
             .map(|f| {
-                if let Some(p) = ctx.lock_pins.iter().find(|p| {
-                    p.ecosystem == f.ecosystem && p.name == f.name && p.path == f.path
-                }) {
+                if let Some(p) = ctx
+                    .lock_pins
+                    .iter()
+                    .find(|p| p.ecosystem == f.ecosystem && p.name == f.name && p.path == f.path)
+                {
                     return Ok(p.clone());
                 }
                 if ctx.offline && f.is_floating {
@@ -131,9 +133,11 @@ impl Ecosystem for FakeNodeEco {
         findings
             .iter()
             .map(|f| {
-                if let Some(p) = ctx.lock_pins.iter().find(|p| {
-                    p.ecosystem == f.ecosystem && p.name == f.name && p.path == f.path
-                }) {
+                if let Some(p) = ctx
+                    .lock_pins
+                    .iter()
+                    .find(|p| p.ecosystem == f.ecosystem && p.name == f.name && p.path == f.path)
+                {
                     return Ok(p.clone());
                 }
                 if ctx.offline && f.is_floating {
@@ -225,8 +229,14 @@ fn pin_twice_preserves_lock_and_stays_clean() {
     pin(&[eco], &policy, &opts).unwrap();
     let second_bytes = std::fs::read(&lock_path).unwrap();
     let toml_after = std::fs::read(dir.path().join(".mise.toml")).unwrap();
-    assert_eq!(second_bytes, first_bytes, "second pin must not change lock bytes");
-    assert_eq!(toml_after, toml_before, "second pin must not change manifest bytes");
+    assert_eq!(
+        second_bytes, first_bytes,
+        "second pin must not change lock bytes"
+    );
+    assert_eq!(
+        toml_after, toml_before,
+        "second pin must not change manifest bytes"
+    );
 }
 
 #[test]
@@ -272,8 +282,18 @@ fn pin_with_ecosystem_filter_preserves_unselected_lock_entries() {
     let lock_path = dir.path().join("pinner.lock.json");
     let first = LockFile::read(&lock_path).unwrap();
     assert_eq!(first.entries.len(), 2);
-    assert!(first.entries.iter().any(|e| e.ecosystem == EcosystemKind::Node));
-    assert!(first.entries.iter().any(|e| e.ecosystem == EcosystemKind::Mise));
+    assert!(
+        first
+            .entries
+            .iter()
+            .any(|e| e.ecosystem == EcosystemKind::Node)
+    );
+    assert!(
+        first
+            .entries
+            .iter()
+            .any(|e| e.ecosystem == EcosystemKind::Mise)
+    );
 
     let node_before = first
         .entries
@@ -303,11 +323,7 @@ fn pin_with_ecosystem_filter_preserves_unselected_lock_entries() {
 #[test]
 fn lock_paths_are_repo_relative_and_portable_across_copy() {
     let a = tempdir().unwrap();
-    std::fs::write(
-        a.path().join(".mise.toml"),
-        "[tools]\nnode = \"latest\"\n",
-    )
-    .unwrap();
+    std::fs::write(a.path().join(".mise.toml"), "[tools]\nnode = \"latest\"\n").unwrap();
     let eco: Arc<dyn Ecosystem> = Arc::new(FakeEco);
     let policy = Policy::default_policy();
 
@@ -412,7 +428,10 @@ fn pin_writes_nothing_when_later_ecosystem_resolve_fails() {
     assert!(matches!(err, pinner_core::CoreError::Ecosystem(_)));
 
     let body = std::fs::read_to_string(&mise_path).unwrap();
-    assert_eq!(body, original, "manifest must be untouched on resolve failure");
+    assert_eq!(
+        body, original,
+        "manifest must be untouched on resolve failure"
+    );
     assert!(
         !dir.path().join("pinner.lock.json").exists(),
         "lock must not be written on resolve failure"

@@ -22,8 +22,13 @@ fn extracts_latest_as_floating() {
         offline: false,
         pin_exact_ranges: true,
     };
-    let findings: Vec<_> = m.iter().flat_map(|x| eco.extract(x, &ctx).unwrap()).collect();
-    assert!(findings
+    let findings: Vec<_> = m
         .iter()
-        .any(|f| f.name == "node" && f.requested == "latest" && f.is_floating));
+        .flat_map(|x| eco.extract(x, &ctx).unwrap())
+        .collect();
+    assert!(
+        findings
+            .iter()
+            .any(|f| f.name == "node" && f.requested == "latest" && f.is_floating)
+    );
 }

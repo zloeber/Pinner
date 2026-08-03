@@ -74,11 +74,12 @@ fn resolve_one(
         });
     }
 
-    let pinned = resolve_via_npm(runner, &finding.name).map_err(|hint| EcosystemError::Resolve {
-        name: finding.name.clone(),
-        requested: finding.requested.clone(),
-        hint,
-    })?;
+    let pinned =
+        resolve_via_npm(runner, &finding.name).map_err(|hint| EcosystemError::Resolve {
+            name: finding.name.clone(),
+            requested: finding.requested.clone(),
+            hint,
+        })?;
 
     Ok(Pin {
         ecosystem: EcosystemKind::Node,
@@ -107,9 +108,7 @@ fn lookup_native_lock_version(
 }
 
 /// Prefer package-lock.json, then pnpm-lock.yaml, then yarn.lock.
-fn read_node_lock_versions(
-    dir: &Path,
-) -> Result<Option<HashMap<String, String>>, EcosystemError> {
+fn read_node_lock_versions(dir: &Path) -> Result<Option<HashMap<String, String>>, EcosystemError> {
     if let Some(map) = read_package_lock_versions(&dir.join("package-lock.json"))? {
         return Ok(Some(map));
     }
@@ -144,9 +143,7 @@ fn read_package_lock_versions(
             continue;
         };
         // Support both packages["ms"] and packages["node_modules/ms"].
-        let name = key
-            .strip_prefix("node_modules/")
-            .unwrap_or(key.as_str());
+        let name = key.strip_prefix("node_modules/").unwrap_or(key.as_str());
         if !is_top_level_package_name(name) {
             continue;
         }
@@ -193,25 +190,24 @@ fn parse_pnpm_package_key(key: &str) -> Option<(String, String)> {
     }
     // Scoped: @scope/name@version or @scope/name/version
     if let Some(rest) = key.strip_prefix('@') {
-        if let Some((scope_name, version)) = rest.rsplit_once('@') {
-            if scope_name.contains('/') {
-                return Some((format!("@{scope_name}"), version.to_string()));
-            }
+        if let Some((scope_name, version)) = rest.rsplit_once('@')
+            && scope_name.contains('/')
+        {
+            return Some((format!("@{scope_name}"), version.to_string()));
         }
         // @scope/name/1.2.3
-        let mut parts = rest.rsplitn(2, '/');
-        let version = parts.next()?;
-        let scope_name = parts.next()?;
+        let (scope_name, version) = rest.rsplit_once('/')?;
         if looks_like_version(version) && scope_name.contains('/') {
             return Some((format!("@{scope_name}"), version.to_string()));
         }
         return None;
     }
 
-    if let Some((name, version)) = key.rsplit_once('@') {
-        if is_top_level_package_name(name) && looks_like_version(version) {
-            return Some((name.to_string(), version.to_string()));
-        }
+    if let Some((name, version)) = key.rsplit_once('@')
+        && is_top_level_package_name(name)
+        && looks_like_version(version)
+    {
+        return Some((name.to_string(), version.to_string()));
     }
     // name/1.2.3
     if let Some((name, version)) = key.rsplit_once('/')
@@ -277,8 +273,7 @@ fn parse_yarn_descriptor_names(descriptor: &str) -> Vec<String> {
 
 fn yarn_package_name(descriptor: &str) -> Option<String> {
     // @scope/name@range
-    if descriptor.starts_with('@') {
-        let rest = &descriptor[1..];
+    if let Some(rest) = descriptor.strip_prefix('@') {
         let (scope_name, _) = rest.rsplit_once('@')?;
         return Some(format!("@{scope_name}"));
     }
