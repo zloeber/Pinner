@@ -5,7 +5,7 @@ use std::process::Command;
 use pinner_ecosystem::EcosystemKind;
 use thiserror::Error;
 
-use crate::detect::{ToolStatus, statuses_with_runner};
+use crate::detect::{ToolStatus, path_with_mise_dirs, statuses_with_runner};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CommandOutput {
@@ -22,7 +22,12 @@ pub struct RealCommandRunner;
 
 impl CommandRunner for RealCommandRunner {
     fn run(&self, program: &str, args: &[&str]) -> Result<CommandOutput, ToolchainError> {
-        let output = Command::new(program).args(args).output().map_err(|error| {
+        let mut command = Command::new(program);
+        command.args(args);
+        if let Some(path) = path_with_mise_dirs() {
+            command.env("PATH", path);
+        }
+        let output = command.output().map_err(|error| {
             if error.kind() == io::ErrorKind::NotFound {
                 ToolchainError::Missing {
                     tools: vec![program.to_string()],
@@ -57,21 +62,23 @@ pub enum ToolchainError {
 pub fn ensure(
     enabled: &[EcosystemKind],
     allow_install: bool,
+    offline: bool,
 ) -> Result<Vec<ToolStatus>, ToolchainError> {
-    ensure_with_runner(&RealCommandRunner, enabled, allow_install)
+    ensure_with_runner(&RealCommandRunner, enabled, allow_install, offline)
 }
 
 pub fn ensure_with_runner(
     runner: &dyn CommandRunner,
     enabled: &[EcosystemKind],
     allow_install: bool,
+    offline: bool,
 ) -> Result<Vec<ToolStatus>, ToolchainError> {
-    let mut statuses = statuses_with_runner(runner, enabled, false);
+    let mut statuses = statuses_with_runner(runner, enabled, true);
     let missing = missing_names(&statuses);
     if missing.is_empty() {
         return Ok(statuses);
     }
-    if !allow_install {
+    if !allow_install || offline || offline_from_env() {
         return Err(ToolchainError::Missing { tools: missing });
     }
 
@@ -81,12 +88,11 @@ pub fn ensure_with_runner(
         .any(|tool| matches!(tool.as_str(), "mise" | "node" | "npm" | "uv" | "gh"));
 
     if needs_mise && !mise_available {
-        if offline() {
+        run_checked(runner, "sh", &["-c", "curl https://mise.run | sh"])?;
+        mise_available = command_succeeds(runner, "mise", &["--version"]);
+        if !mise_available {
             return Err(ToolchainError::Missing { tools: missing });
         }
-        run_checked(runner, "sh", &["-c", "curl https://mise.run | sh"])?;
-        mise_available = true;
-        mark_present(&mut statuses, &["mise"]);
     }
 
     let mut install_args = vec!["install"];
@@ -105,16 +111,9 @@ pub fn ensure_with_runner(
 
     if install_args.len() > 1 && mise_available {
         run_checked(runner, "mise", &install_args)?;
-        for target in install_args.iter().skip(1) {
-            match *target {
-                "node@lts" => mark_present(&mut statuses, &["node", "npm"]),
-                "uv" => mark_present(&mut statuses, &["uv"]),
-                "gh" => mark_present(&mut statuses, &["gh"]),
-                _ => {}
-            }
-        }
     }
 
+    statuses = statuses_with_runner(runner, enabled, true);
     let still_missing = missing_names(&statuses);
     if still_missing.is_empty() {
         Ok(statuses)
@@ -156,15 +155,7 @@ fn missing_names(statuses: &[ToolStatus]) -> Vec<String> {
         .collect()
 }
 
-fn mark_present(statuses: &mut [ToolStatus], names: &[&str]) {
-    for status in statuses {
-        if names.contains(&status.name.as_str()) {
-            status.present = true;
-        }
-    }
-}
-
-fn offline() -> bool {
+fn offline_from_env() -> bool {
     env::var("PINNER_OFFLINE")
         .is_ok_and(|value| matches!(value.to_ascii_lowercase().as_str(), "1" | "true" | "yes"))
 }

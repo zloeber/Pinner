@@ -1,6 +1,6 @@
 use std::collections::HashSet;
 use std::env;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use pinner_ecosystem::EcosystemKind;
 use serde::Serialize;
@@ -86,10 +86,83 @@ fn version_from_output(output: &crate::CommandOutput) -> Option<String> {
     (!value.is_empty()).then(|| value.to_string())
 }
 
+pub(crate) fn path_with_mise_dirs() -> Option<std::ffi::OsString> {
+    let mut paths = env::var_os("PATH")
+        .into_iter()
+        .flat_map(|paths| env::split_paths(&paths).collect::<Vec<_>>())
+        .collect::<Vec<_>>();
+
+    for candidate in known_mise_paths().filter(|candidate| is_executable_file(candidate)) {
+        if let Some(directory) = candidate.parent()
+            && !paths.iter().any(|path| path == directory)
+        {
+            paths.push(directory.to_path_buf());
+        }
+    }
+
+    env::join_paths(paths).ok()
+}
+
 fn find_on_path(name: &str) -> Option<PathBuf> {
-    env::var_os("PATH")
+    path_with_mise_dirs()
         .into_iter()
         .flat_map(|paths| env::split_paths(&paths).collect::<Vec<_>>())
         .map(|directory| directory.join(name))
-        .find(|candidate| candidate.is_file())
+        .find(|candidate| is_executable_file(candidate))
+}
+
+fn known_mise_paths() -> impl Iterator<Item = PathBuf> {
+    let home = env::var_os("HOME").map(PathBuf::from);
+    home.into_iter()
+        .flat_map(|home| [home.join(".local/bin/mise"), home.join(".mise/bin/mise")])
+}
+
+fn is_executable_file(candidate: &Path) -> bool {
+    if !candidate.is_file() {
+        return false;
+    }
+
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+
+        candidate
+            .metadata()
+            .is_ok_and(|metadata| metadata.permissions().mode() & 0o111 != 0)
+    }
+
+    #[cfg(not(unix))]
+    {
+        true
+    }
+}
+
+#[cfg(all(test, unix))]
+mod tests {
+    use std::fs::{self, File};
+    use std::os::unix::fs::PermissionsExt;
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    use super::is_executable_file;
+
+    #[test]
+    fn path_candidates_must_be_executable() {
+        let unique = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let directory =
+            std::env::temp_dir().join(format!("pinner-toolchain-{}-{unique}", std::process::id()));
+        fs::create_dir(&directory).unwrap();
+        let candidate = directory.join("tool");
+        File::create(&candidate).unwrap();
+
+        fs::set_permissions(&candidate, fs::Permissions::from_mode(0o644)).unwrap();
+        assert!(!is_executable_file(&candidate));
+
+        fs::set_permissions(&candidate, fs::Permissions::from_mode(0o755)).unwrap();
+        assert!(is_executable_file(&candidate));
+
+        fs::remove_dir_all(directory).unwrap();
+    }
 }
