@@ -1,6 +1,5 @@
 // crates/pinner-ecosystem/tests/types_roundtrip.rs
 use pinner_ecosystem::{EvidenceKind, EcosystemKind, Pin};
-use serde_json::json;
 use std::path::PathBuf;
 
 #[test]
