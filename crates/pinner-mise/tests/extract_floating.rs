@@ -6,7 +6,7 @@ use pinner_mise::MiseEcosystem;
 #[test]
 fn discovers_mise_toml_and_tool_versions() {
     let repo = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../tests/fixtures/mise-floating");
-    let eco = MiseEcosystem;
+    let eco = MiseEcosystem::default();
     let manifests = eco.discover(&repo).unwrap();
     assert_eq!(manifests.len(), 2);
 }
@@ -14,7 +14,7 @@ fn discovers_mise_toml_and_tool_versions() {
 #[test]
 fn extracts_latest_as_floating() {
     let repo = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../tests/fixtures/mise-floating");
-    let eco = MiseEcosystem;
+    let eco = MiseEcosystem::default();
     let m = eco.discover(&repo).unwrap();
     let ctx = EcosystemCtx {
         lock_pins: &[],

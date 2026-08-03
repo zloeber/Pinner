@@ -1,14 +1,38 @@
 mod discover;
 mod extract;
+mod resolve;
+mod rewrite;
 
 use std::path::Path;
+use std::sync::Arc;
 
 use pinner_ecosystem::{
     Ecosystem, EcosystemCtx, EcosystemError, EcosystemKind, Finding, Manifest, Pin, Rewrite,
 };
+use pinner_toolchain::{CommandRunner, RealCommandRunner};
 
-/// Mise ecosystem: discover/extract `.mise.toml` and `.tool-versions`.
-pub struct MiseEcosystem;
+/// Mise ecosystem: discover/extract/resolve/rewrite `.mise.toml` and `.tool-versions`.
+pub struct MiseEcosystem {
+    pub(crate) runner: Arc<dyn CommandRunner>,
+}
+
+impl Default for MiseEcosystem {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl MiseEcosystem {
+    pub fn new() -> Self {
+        Self {
+            runner: Arc::new(RealCommandRunner),
+        }
+    }
+
+    pub fn with_runner(runner: Arc<dyn CommandRunner>) -> Self {
+        Self { runner }
+    }
+}
 
 impl Ecosystem for MiseEcosystem {
     fn kind(&self) -> EcosystemKind {
@@ -29,17 +53,17 @@ impl Ecosystem for MiseEcosystem {
 
     fn resolve(
         &self,
-        _findings: &[Finding],
-        _ctx: &EcosystemCtx<'_>,
+        findings: &[Finding],
+        ctx: &EcosystemCtx<'_>,
     ) -> Result<Vec<Pin>, EcosystemError> {
-        Ok(Vec::new())
+        self.resolve_findings(findings, ctx)
     }
 
     fn rewrite(
         &self,
-        _manifest: &Manifest,
-        _pins: &[Pin],
+        manifest: &Manifest,
+        pins: &[Pin],
     ) -> Result<Option<Rewrite>, EcosystemError> {
-        Ok(None)
+        rewrite::rewrite(manifest, pins)
     }
 }

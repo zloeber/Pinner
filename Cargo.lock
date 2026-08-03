@@ -356,7 +356,10 @@ name = "pinner-mise"
 version = "0.1.0"
 dependencies = [
  "pinner-ecosystem",
+ "pinner-toolchain",
+ "tempfile",
  "toml",
+ "toml_edit",
 ]
 
 [[package]]
