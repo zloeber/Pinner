@@ -833,6 +833,12 @@ name = "pinner-helm"
 version = "0.1.0"
 dependencies = [
  "pinner-ecosystem",
+ "pinner-iac-common",
+ "serde",
+ "serde_json",
+ "serde_yaml",
+ "tempfile",
+ "walkdir",
 ]
 
 [[package]]

@@ -19,7 +19,8 @@ pub fn parse_resolve_map(raw: &str) -> HashMap<String, String> {
         };
         let key = key.trim();
         let value = value.trim();
-        if !key.is_empty() && !value.is_empty() {
+        // Empty keys are allowed (e.g. Helm missing chart version → `=1.2.3`).
+        if !value.is_empty() {
             map.insert(key.to_string(), value.to_string());
         }
     }
@@ -47,5 +48,12 @@ mod tests {
                 .map(String::as_str),
             Some("11bd71901bbe5b1630ceea73d27597364c9af683")
         );
+    }
+
+    #[test]
+    fn parse_entries_empty_key() {
+        let m = parse_resolve_map("=4.10.0,*=18.6.1");
+        assert_eq!(m.get("").map(String::as_str), Some("4.10.0"));
+        assert_eq!(m.get("*").map(String::as_str), Some("18.6.1"));
     }
 }
