@@ -740,9 +740,12 @@ dependencies = [
  "pinner-core",
  "pinner-docker",
  "pinner-ecosystem",
+ "pinner-helm",
+ "pinner-k8s",
  "pinner-mise",
  "pinner-node",
  "pinner-python",
+ "pinner-terraform",
  "pinner-toolchain",
  "predicates",
  "serde_json",
@@ -795,6 +798,24 @@ dependencies = [
 ]
 
 [[package]]
+name = "pinner-helm"
+version = "0.1.0"
+dependencies = [
+ "pinner-ecosystem",
+]
+
+[[package]]
+name = "pinner-iac-common"
+version = "0.1.0"
+
+[[package]]
+name = "pinner-k8s"
+version = "0.1.0"
+dependencies = [
+ "pinner-ecosystem",
+]
+
+[[package]]
 name = "pinner-mise"
 version = "0.1.0"
 dependencies = [
@@ -828,6 +849,13 @@ dependencies = [
  "toml",
  "toml_edit",
  "walkdir",
+]
+
+[[package]]
+name = "pinner-terraform"
+version = "0.1.0"
+dependencies = [
+ "pinner-ecosystem",
 ]
 
 [[package]]

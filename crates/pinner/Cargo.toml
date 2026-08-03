@@ -16,6 +16,9 @@ pinner-actions = { workspace = true }
 pinner-core = { workspace = true }
 pinner-docker = { workspace = true }
 pinner-ecosystem = { workspace = true }
+pinner-helm = { workspace = true }
+pinner-k8s = { workspace = true }
+pinner-terraform = { workspace = true }
 pinner-mise = { workspace = true }
 pinner-node = { workspace = true }
 pinner-python = { workspace = true }
