@@ -122,6 +122,9 @@ fn register_ecosystems() -> Vec<Arc<dyn Ecosystem>> {
         Arc::new(pinner_python::PythonEcosystem),
         Arc::new(pinner_docker::DockerEcosystem),
         Arc::new(pinner_actions::ActionsEcosystem),
+        Arc::new(pinner_terraform::TerraformEcosystem),
+        Arc::new(pinner_helm::HelmEcosystem),
+        Arc::new(pinner_k8s::K8sEcosystem),
     ]
 }
 
@@ -159,6 +162,9 @@ fn parse_ecosystem(value: &str) -> Result<EcosystemKind, Box<dyn std::error::Err
         "python" => Ok(EcosystemKind::Python),
         "docker" => Ok(EcosystemKind::Docker),
         "actions" => Ok(EcosystemKind::Actions),
+        "terraform" => Ok(EcosystemKind::Terraform),
+        "helm" => Ok(EcosystemKind::Helm),
+        "k8s" => Ok(EcosystemKind::K8s),
         other => Err(format!("unknown ecosystem: {other}").into()),
     }
 }

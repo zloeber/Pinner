@@ -1,0 +1,49 @@
+mod discover;
+mod extract;
+mod git_source;
+mod resolve;
+mod rewrite;
+
+use std::path::Path;
+
+use pinner_ecosystem::{
+    Ecosystem, EcosystemCtx, EcosystemError, EcosystemKind, Finding, Manifest, Pin, Rewrite,
+};
+
+/// Terraform ecosystem: discover/extract/resolve/rewrite `.tf` module sources and provider pins.
+#[derive(Debug, Default, Clone, Copy)]
+pub struct TerraformEcosystem;
+
+impl Ecosystem for TerraformEcosystem {
+    fn kind(&self) -> EcosystemKind {
+        EcosystemKind::Terraform
+    }
+
+    fn discover(&self, repo: &Path) -> Result<Vec<Manifest>, EcosystemError> {
+        discover::discover(repo)
+    }
+
+    fn extract(
+        &self,
+        manifest: &Manifest,
+        ctx: &EcosystemCtx<'_>,
+    ) -> Result<Vec<Finding>, EcosystemError> {
+        extract::extract(manifest, ctx)
+    }
+
+    fn resolve(
+        &self,
+        findings: &[Finding],
+        ctx: &EcosystemCtx<'_>,
+    ) -> Result<Vec<Pin>, EcosystemError> {
+        self.resolve_findings(findings, ctx)
+    }
+
+    fn rewrite(
+        &self,
+        manifest: &Manifest,
+        pins: &[Pin],
+    ) -> Result<Option<Rewrite>, EcosystemError> {
+        rewrite::rewrite(manifest, pins)
+    }
+}

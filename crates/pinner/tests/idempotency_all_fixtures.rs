@@ -39,6 +39,13 @@ const FIXTURES: &[FixtureCase] = &[
             "actions/checkout@v4=11bd71901bbe5b1630ceea73d27597364c9af683",
         )],
     },
+    FixtureCase {
+        name: "terraform-floating",
+        env: &[(
+            "PINNER_TERRAFORM_RESOLVE_MAP",
+            "vpc@~> 5.0=5.1.0,hashicorp/aws@~> 5.0=5.100.0,git_mod@git::https://example.com/org/mod.git?ref=main=11bd71901bbe5b1630ceea73d27597364c9af683",
+        )],
+    },
 ];
 
 fn fixtures_root() -> PathBuf {

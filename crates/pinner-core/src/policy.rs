@@ -44,6 +44,9 @@ struct EcosystemsSection {
     python: Option<bool>,
     docker: Option<bool>,
     actions: Option<bool>,
+    terraform: Option<bool>,
+    helm: Option<bool>,
+    k8s: Option<bool>,
 }
 
 #[derive(Debug, Default, Deserialize)]
@@ -65,6 +68,7 @@ impl Policy {
                 EcosystemKind::Python,
                 EcosystemKind::Docker,
                 EcosystemKind::Actions,
+                EcosystemKind::Terraform,
             ],
             vec![
                 "**/node_modules/**".to_string(),
@@ -111,6 +115,13 @@ impl Policy {
                 EcosystemKind::Actions,
                 ecosystems.actions,
             );
+            apply_ecosystem(
+                &mut self.enabled,
+                EcosystemKind::Terraform,
+                ecosystems.terraform,
+            );
+            apply_ecosystem(&mut self.enabled, EcosystemKind::Helm, ecosystems.helm);
+            apply_ecosystem(&mut self.enabled, EcosystemKind::K8s, ecosystems.k8s);
         }
 
         if let Some(ignore) = file.ignore {
