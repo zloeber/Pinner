@@ -103,7 +103,7 @@ fn enabled_kinds(
 fn register_ecosystems() -> Vec<Arc<dyn Ecosystem>> {
     vec![
         Arc::new(pinner_mise::MiseEcosystem::default()),
-        Arc::new(pinner_node::NodeEcosystem),
+        Arc::new(pinner_node::NodeEcosystem::default()),
         Arc::new(pinner_python::PythonEcosystem),
         Arc::new(pinner_docker::DockerEcosystem),
         Arc::new(pinner_actions::ActionsEcosystem),
