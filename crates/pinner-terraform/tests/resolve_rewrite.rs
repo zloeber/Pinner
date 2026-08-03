@@ -44,8 +44,10 @@ fn resolve_and_rewrite_via_env_map() {
             .any(|p| p.name == "vpc" && p.pinned == "5.1.0")
     );
     assert!(
-        pins.iter()
-            .any(|p| p.name == "git_mod" && p.pinned == GIT_SHA)
+        pins.iter().any(|p| {
+            p.name == "git_mod"
+                && p.pinned == format!("git::https://example.com/org/mod.git?ref={GIT_SHA}")
+        })
     );
     assert!(
         pins.iter()

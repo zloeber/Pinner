@@ -6,6 +6,8 @@ use hcl_edit::structure::{Attribute, Body};
 use hcl_edit::Ident;
 use pinner_ecosystem::{EcosystemError, Manifest, Pin, Rewrite};
 
+use crate::git_source::{git_ref_for_rewrite, is_git_or_http_requested, rewrite_git_ref};
+
 pub(crate) fn rewrite(
     manifest: &Manifest,
     pins: &[Pin],
@@ -44,7 +46,7 @@ fn rewrite_file(path: &std::path::Path, pins: &[Pin]) -> Result<String, Ecosyste
         {
             if let Some(mut attr) = block.body.get_attribute_mut("source") {
                 let current = attr.value.as_str().unwrap_or("").to_string();
-                let updated = rewrite_git_ref(&current, &pin.pinned);
+                let updated = rewrite_git_ref(&current, git_ref_for_rewrite(&pin.pinned));
                 *attr.value_mut() = Expression::from(updated);
             }
         } else if let Some(mut attr) = block.body.get_attribute_mut("version") {
@@ -93,43 +95,8 @@ fn set_object_str(obj: &mut Object, key: &str, value: &str) {
     }
 }
 
-fn rewrite_git_ref(source: &str, sha: &str) -> String {
-    if let Some((base, query)) = source.split_once('?') {
-        let mut parts: Vec<String> = query
-            .split('&')
-            .map(|part| {
-                if let Some(rest) = part.strip_prefix("ref=") {
-                    let _ = rest;
-                    format!("ref={sha}")
-                } else {
-                    part.to_string()
-                }
-            })
-            .collect();
-        if !parts.iter().any(|p| p.starts_with("ref=")) {
-            parts.push(format!("ref={sha}"));
-        }
-        format!("{base}?{}", parts.join("&"))
-    } else if source.contains('?') {
-        source.to_string()
-    } else {
-        format!("{source}?ref={sha}")
-    }
-}
-
 fn is_git_or_http_source(source: &str) -> bool {
     is_git_or_http_requested(source)
-}
-
-fn is_git_or_http_requested(requested: &str) -> bool {
-    let s = requested.trim();
-    s.starts_with("git::")
-        || s.starts_with("git@")
-        || s.starts_with("https://")
-        || s.starts_with("http://")
-        || s.starts_with("github.com/")
-        || s.starts_with("bitbucket.org/")
-        || s.starts_with("gitlab.com/")
 }
 
 fn attr_str(body: &Body, key: &str) -> Option<String> {
@@ -148,21 +115,5 @@ fn object_key_eq(key: &ObjectKey, expected: &str) -> bool {
         ObjectKey::Ident(ident) => ident.as_str() == expected,
         ObjectKey::Expression(Expression::String(s)) => s.as_str() == expected,
         _ => false,
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::rewrite_git_ref;
-
-    #[test]
-    fn rewrite_git_ref_replaces_existing() {
-        assert_eq!(
-            rewrite_git_ref(
-                "git::https://example.com/org/mod.git?ref=main",
-                "11bd71901bbe5b1630ceea73d27597364c9af683"
-            ),
-            "git::https://example.com/org/mod.git?ref=11bd71901bbe5b1630ceea73d27597364c9af683"
-        );
     }
 }

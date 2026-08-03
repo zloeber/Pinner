@@ -10,6 +10,7 @@ use pinner_ecosystem::{
 use pinner_iac_common::{parse_resolve_map, resolve_git_sha};
 use pinner_toolchain::{CommandRunner, RealCommandRunner};
 
+use crate::git_source::{git_pinned_source, is_git_or_http_requested};
 use crate::TerraformEcosystem;
 
 impl TerraformEcosystem {
@@ -93,6 +94,11 @@ fn resolve_one(
 }
 
 fn registry_pin(finding: &Finding, pinned: String, evidence: EvidenceKind) -> Pin {
+    let pinned = if is_git_or_http_requested(&finding.requested) {
+        git_pinned_source(&finding.requested, &pinned)
+    } else {
+        pinned
+    };
     Pin {
         ecosystem: EcosystemKind::Terraform,
         name: finding.name.clone(),
@@ -111,16 +117,6 @@ fn resolve_map_from_env() -> HashMap<String, String> {
     parse_resolve_map(&raw)
 }
 
-fn is_git_or_http_requested(requested: &str) -> bool {
-    let s = requested.trim();
-    s.starts_with("git::")
-        || s.starts_with("git@")
-        || s.starts_with("https://")
-        || s.starts_with("http://")
-        || s.starts_with("github.com/")
-        || s.starts_with("bitbucket.org/")
-        || s.starts_with("gitlab.com/")
-}
 
 /// Provider findings use registry-style `namespace/name` (or hostname-qualified) sources.
 fn is_provider_finding(finding: &Finding) -> bool {

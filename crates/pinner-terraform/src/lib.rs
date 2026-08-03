@@ -1,5 +1,6 @@
 mod discover;
 mod extract;
+mod git_source;
 mod resolve;
 mod rewrite;
 
