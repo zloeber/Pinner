@@ -89,8 +89,7 @@ pub fn pin(
     report.pins = dedupe_pins(combined);
 
     if !opts.dry_run {
-        LockFile::from_pins(&report.pins, env!("CARGO_PKG_VERSION"), &generated_at())
-            .write(&lock_path)?;
+        write_lock_idempotent(&lock_path, &report.pins)?;
     }
 
     Ok(report)
@@ -228,8 +227,17 @@ fn pins_for_full_graph(
             if is_allowlisted(finding, policy, repo) {
                 continue;
             }
+            // Lock mirrors the rewritten source: requested == pinned.
             if let Some(pin) = resolved.iter().find(|pin| same_item(finding, pin)) {
-                pins.push(pin.clone());
+                pins.push(Pin {
+                    ecosystem: pin.ecosystem,
+                    name: pin.name.clone(),
+                    requested: pin.pinned.clone(),
+                    pinned: pin.pinned.clone(),
+                    path: pin.path.clone(),
+                    evidence: pin.evidence,
+                    metadata: pin.metadata.clone(),
+                });
             }
             continue;
         }
@@ -244,7 +252,8 @@ fn pins_for_full_graph(
                 requested: finding.requested.clone(),
                 pinned: finding.requested.clone(),
                 path: finding.path.clone(),
-                evidence: EvidenceKind::Lock,
+                // Preserve prior evidence so a second pin does not flip tool→lock.
+                evidence: prior.evidence,
                 metadata: prior.metadata.clone(),
             });
         } else {
@@ -260,6 +269,44 @@ fn pins_for_full_graph(
         }
     }
     pins
+}
+
+/// Skip rewriting the lock when entries/`pinner_version` are unchanged so a second
+/// `pin` keeps byte-identical `generated_at` and file contents.
+fn write_lock_idempotent(lock_path: &Path, pins: &[Pin]) -> Result<(), CoreError> {
+    let pinner_version = env!("CARGO_PKG_VERSION");
+    match LockFile::read(lock_path) {
+        Ok(existing) => {
+            let candidate =
+                LockFile::from_pins(pins, pinner_version, &existing.generated_at);
+            if lock_substantive_eq(&existing, &candidate) {
+                return Ok(());
+            }
+            LockFile::from_pins(pins, pinner_version, &generated_at()).write(lock_path)?;
+        }
+        Err(_) => {
+            LockFile::from_pins(pins, pinner_version, &generated_at()).write(lock_path)?;
+        }
+    }
+    Ok(())
+}
+
+fn lock_substantive_eq(a: &LockFile, b: &LockFile) -> bool {
+    if a.version != b.version || a.pinner_version != b.pinner_version {
+        return false;
+    }
+    let mut ae = a.entries.clone();
+    let mut be = b.entries.clone();
+    let key = |e: &LockEntry| {
+        (
+            e.ecosystem.as_str().to_string(),
+            e.path.clone(),
+            e.name.clone(),
+        )
+    };
+    ae.sort_by_key(key);
+    be.sort_by_key(key);
+    ae == be
 }
 
 fn dedupe_pins(pins: Vec<Pin>) -> Vec<Pin> {

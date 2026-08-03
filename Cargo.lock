@@ -313,6 +313,7 @@ dependencies = [
  "pinner-toolchain",
  "predicates",
  "serde_json",
+ "tempfile",
 ]
 
 [[package]]

@@ -212,18 +212,21 @@ fn pin_twice_preserves_lock_and_stays_clean() {
 
     pin(&[Arc::clone(&eco)], &policy, &opts).unwrap();
     let lock_path = dir.path().join("pinner.lock.json");
+    let first_bytes = std::fs::read(&lock_path).unwrap();
     let first = LockFile::read(&lock_path).unwrap();
     assert_eq!(first.entries.len(), 1);
     assert_eq!(first.entries[0].pinned, "22.11.0");
+    assert_eq!(first.entries[0].requested, "22.11.0");
 
     let clean = check(&[Arc::clone(&eco)], &policy, &opts).unwrap();
     assert!(clean.drift.is_empty());
 
+    let toml_before = std::fs::read(dir.path().join(".mise.toml")).unwrap();
     pin(&[eco], &policy, &opts).unwrap();
-    let second = LockFile::read(&lock_path).unwrap();
-    assert_eq!(second.entries.len(), first.entries.len());
-    assert_eq!(second.entries[0].pinned, first.entries[0].pinned);
-    assert_eq!(second.entries[0].name, first.entries[0].name);
+    let second_bytes = std::fs::read(&lock_path).unwrap();
+    let toml_after = std::fs::read(dir.path().join(".mise.toml")).unwrap();
+    assert_eq!(second_bytes, first_bytes, "second pin must not change lock bytes");
+    assert_eq!(toml_after, toml_before, "second pin must not change manifest bytes");
 }
 
 #[test]
