@@ -18,3 +18,9 @@ fn pin_serializes_stable_field_names() {
     assert_eq!(v["evidence"], "lock");
     assert_eq!(v["pinned"], "22.11.0");
 }
+
+#[test]
+fn ecosystem_kind_terraform_serializes_as_lowercase() {
+    let v = serde_json::to_value(EcosystemKind::Terraform).unwrap();
+    assert_eq!(v, "terraform");
+}
