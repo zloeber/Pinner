@@ -1,0 +1,123 @@
+version: "3"
+
+vars:
+  CARGO_FLAGS: --locked
+
+tasks:
+  default:
+    desc: List available tasks
+    cmds:
+      - task --list
+
+  setup:
+    desc: Trust mise config and install pinned toolchain binaries
+    cmds:
+      - mise trust --quiet || true
+      - mise install
+      - mise exec -- rustc --version
+      - mise exec -- cargo --version
+      - mise exec -- node --version
+      - mise exec -- npm --version
+      - mise exec -- uv --version
+      - mise exec -- gh --version
+      - mise exec -- task --version
+      - |
+        if command -v docker >/dev/null 2>&1; then
+          docker --version
+        else
+          echo "note: docker not on PATH (optional for docker ecosystem tests)"
+        fi
+
+  toolchain:status:
+    desc: Show mise-managed tools and versions
+    cmds:
+      - mise ls
+      - mise current
+
+  build:
+    desc: Build the workspace (debug)
+    cmds:
+      - mise exec -- cargo build {{.CARGO_FLAGS}} --workspace
+
+  build:release:
+    desc: Build the workspace (release)
+    cmds:
+      - mise exec -- cargo build {{.CARGO_FLAGS}} --workspace --release
+
+  install:
+    desc: Install the pinner binary into cargo bin directory
+    cmds:
+      - mise exec -- cargo install --locked --path crates/pinner --force
+
+  check:
+    desc: Type-check the workspace
+    cmds:
+      - mise exec -- cargo check {{.CARGO_FLAGS}} --workspace --all-targets
+
+  fmt:
+    desc: Format Rust sources
+    cmds:
+      - mise exec -- cargo fmt --all
+
+  fmt:check:
+    desc: Check formatting without writing
+    cmds:
+      - mise exec -- cargo fmt --all -- --check
+
+  clippy:
+    desc: Lint with clippy (deny warnings)
+    cmds:
+      - mise exec -- cargo clippy {{.CARGO_FLAGS}} --workspace --all-targets -- -D warnings
+
+  test:
+    desc: Run the full workspace test suite
+    cmds:
+      - mise exec -- cargo test {{.CARGO_FLAGS}} --workspace
+
+  test:schema:
+    desc: Validate pinner.lock.json schema fixtures
+    cmds:
+      - mise exec -- cargo test {{.CARGO_FLAGS}} -p pinner --test lock_schema
+
+  test:idempotency:
+    desc: Run fixture idempotency matrix
+    cmds:
+      - mise exec -- cargo test {{.CARGO_FLAGS}} -p pinner --test idempotency_all_fixtures
+
+  ci:
+    desc: Local CI gate (fmt check, clippy, tests, schema)
+    cmds:
+      - task: fmt:check
+      - task: clippy
+      - task: test
+      - task: test:schema
+
+  run:
+    desc: "Run pinner with args (example: task run -- pin --dry-run)"
+    cmds:
+      - mise exec -- cargo run {{.CARGO_FLAGS}} -p pinner -- {{.CLI_ARGS}}
+
+  pin:
+    desc: Dogfood pin this repo (dry-run by default)
+    cmds:
+      - mise exec -- cargo run {{.CARGO_FLAGS}} -p pinner -- pin --dry-run {{.CLI_ARGS}}
+
+  pinner:check:
+    desc: Dogfood check this repo against pinner.lock.json
+    cmds:
+      - mise exec -- cargo run {{.CARGO_FLAGS}} -p pinner -- check {{.CLI_ARGS}}
+
+  pinner:audit:
+    desc: Dogfood audit floating refs in this repo
+    cmds:
+      - mise exec -- cargo run {{.CARGO_FLAGS}} -p pinner -- audit {{.CLI_ARGS}}
+
+  pinner:toolchain:
+    desc: Dogfood pinner toolchain status
+    cmds:
+      - mise exec -- cargo run {{.CARGO_FLAGS}} -p pinner -- toolchain status
+
+  clean:
+    desc: Remove Cargo build artifacts
+    cmds:
+      - mise exec -- cargo clean

@@ -1,0 +1,18 @@
+# Documentation-only consumer workflow sample.
+# Trigger manually; not part of this repo's required CI.
+name: consumer-example
+on:
+  workflow_dispatch:
+
+jobs:
+  pinner-check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Install pinner
+        run: cargo install --locked --path crates/pinner # or release binary
+      - name: Ensure resolver toolchain
+        run: pinner toolchain ensure
+      - name: Drift check
+        run: pinner check

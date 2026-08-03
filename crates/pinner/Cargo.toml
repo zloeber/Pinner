@@ -1,0 +1,29 @@
+[package]
+name = "pinner"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[[bin]]
+name = "pinner"
+path = "src/main.rs"
+
+[dependencies]
+clap = { workspace = true }
+serde_json = { workspace = true }
+pinner-actions = { workspace = true }
+pinner-core = { workspace = true }
+pinner-docker = { workspace = true }
+pinner-ecosystem = { workspace = true }
+pinner-mise = { workspace = true }
+pinner-node = { workspace = true }
+pinner-python = { workspace = true }
+pinner-toolchain = { workspace = true }
+
+[dev-dependencies]
+assert_cmd = { workspace = true }
+jsonschema = { workspace = true }
+predicates = { workspace = true }
+serde_json = { workspace = true }
+tempfile = { workspace = true }

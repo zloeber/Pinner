@@ -1,1 +1,6 @@
 .worktrees/
+/target
+**/*.rs.bk
+.DS_Store
+mise.local.toml
+.task/

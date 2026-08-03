@@ -1,0 +1,78 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/zloeber/Pinner/schemas/pinner.lock.schema.json",
+  "title": "Pinner lockfile",
+  "description": "Unified cross-ecosystem dependency lock for pinner",
+  "type": "object",
+  "required": ["version", "generated_at", "pinner_version", "entries"],
+  "additionalProperties": false,
+  "properties": {
+    "version": {
+      "type": "integer",
+      "const": 1
+    },
+    "generated_at": {
+      "type": "string"
+    },
+    "pinner_version": {
+      "type": "string"
+    },
+    "entries": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/lockEntry"
+      }
+    }
+  },
+  "$defs": {
+    "ecosystem": {
+      "type": "string",
+      "enum": ["mise", "node", "python", "docker", "actions"]
+    },
+    "evidence": {
+      "type": "string",
+      "enum": ["lock", "native_lock", "registry", "tool"]
+    },
+    "lockEntry": {
+      "type": "object",
+      "required": [
+        "ecosystem",
+        "name",
+        "requested",
+        "pinned",
+        "source",
+        "path",
+        "evidence",
+        "metadata"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "ecosystem": {
+          "$ref": "#/$defs/ecosystem"
+        },
+        "name": {
+          "type": "string"
+        },
+        "requested": {
+          "type": "string"
+        },
+        "pinned": {
+          "type": "string"
+        },
+        "source": {
+          "type": "string"
+        },
+        "path": {
+          "type": "string"
+        },
+        "evidence": {
+          "$ref": "#/$defs/evidence"
+        },
+        "metadata": {
+          "type": "object",
+          "additionalProperties": true
+        }
+      }
+    }
+  }
+}
