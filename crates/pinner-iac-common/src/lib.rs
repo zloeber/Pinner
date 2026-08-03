@@ -13,7 +13,8 @@ pub fn parse_resolve_map(raw: &str) -> HashMap<String, String> {
         if entry.is_empty() {
             continue;
         }
-        let Some((key, value)) = entry.split_once('=') else {
+        // Prefer last `=` so keys may contain `=` (e.g. Terraform git `?ref=main`).
+        let Some((key, value)) = entry.rsplit_once('=') else {
             continue;
         };
         let key = key.trim();
@@ -34,5 +35,17 @@ mod tests {
         let m = parse_resolve_map("a=b,c=d");
         assert_eq!(m.get("a").map(String::as_str), Some("b"));
         assert_eq!(m.get("c").map(String::as_str), Some("d"));
+    }
+
+    #[test]
+    fn parse_entries_key_may_contain_equals() {
+        let m = parse_resolve_map(
+            "git::https://example.com/org/mod.git?ref=main=11bd71901bbe5b1630ceea73d27597364c9af683",
+        );
+        assert_eq!(
+            m.get("git::https://example.com/org/mod.git?ref=main")
+                .map(String::as_str),
+            Some("11bd71901bbe5b1630ceea73d27597364c9af683")
+        );
     }
 }
