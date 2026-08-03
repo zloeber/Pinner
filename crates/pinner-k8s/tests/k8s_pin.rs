@@ -86,7 +86,7 @@ fn resolve_and_rewrite_via_env_map_sets_tag_and_kind_metadata() {
     unsafe {
         std::env::set_var(
             "PINNER_K8S_RESOLVE_MAP",
-            "nginx:latest=nginx@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa,busybox:1.36=busybox@sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb,alpine=alpine@sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc,python:3.12=python@sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+            "nginx@nginx:latest=nginx@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa,busybox@busybox:1.36=busybox@sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb,alpine@alpine=alpine@sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc,python@python:3.12=python@sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
         );
     }
 

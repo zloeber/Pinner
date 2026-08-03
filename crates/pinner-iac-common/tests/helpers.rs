@@ -1,4 +1,4 @@
-use pinner_iac_common::{image_name, normalize_digest_ref, parse_resolve_map};
+use pinner_iac_common::{image_name, normalize_digest_ref, parse_resolve_map, resolve_map_lookup};
 
 #[test]
 fn image_name_strips_tag_and_digest() {
@@ -25,4 +25,17 @@ fn normalize_digest_builds_name_at_sha() {
 fn parse_resolve_map_still_works() {
     let map = parse_resolve_map("a=b,c=d");
     assert_eq!(map.get("a").map(String::as_str), Some("b"));
+}
+
+#[test]
+fn resolve_map_lookup_name_at_requested() {
+    let map = parse_resolve_map("vpc@~> 5.0=5.1.0,hashicorp/aws@~> 5.0=5.100.0");
+    assert_eq!(
+        resolve_map_lookup(&map, "vpc", "~> 5.0").as_deref(),
+        Some("5.1.0")
+    );
+    assert_eq!(
+        resolve_map_lookup(&map, "hashicorp/aws", "~> 5.0").as_deref(),
+        Some("5.100.0")
+    );
 }

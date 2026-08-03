@@ -1,4 +1,3 @@
-use std::collections::HashMap;
 use std::path::Path;
 
 use pinner_ecosystem::{EcosystemError, Manifest, Pin, Rewrite};
@@ -36,8 +35,18 @@ pub(crate) fn rewrite(
     }))
 }
 
-fn pin_by_name(pins: &[Pin]) -> HashMap<&str, &Pin> {
-    pins.iter().map(|p| (p.name.as_str(), p)).collect()
+fn pin_for<'a>(pins: &'a [Pin], name: &str, repository: &str) -> Option<&'a Pin> {
+    pins.iter().find(|p| {
+        if p.name != name {
+            return false;
+        }
+        let pin_repo = p
+            .metadata
+            .get("repository")
+            .and_then(|v| v.as_str())
+            .unwrap_or("");
+        pin_repo == repository
+    })
 }
 
 fn rewrite_chart_yaml(path: &Path, pins: &[Pin]) -> Result<String, EcosystemError> {
@@ -47,7 +56,6 @@ fn rewrite_chart_yaml(path: &Path, pins: &[Pin]) -> Result<String, EcosystemErro
         message: e.to_string(),
     })?;
 
-    let by_name = pin_by_name(pins);
     if let Some(deps) = value
         .get_mut("dependencies")
         .and_then(|d| d.as_sequence_mut())
@@ -56,7 +64,12 @@ fn rewrite_chart_yaml(path: &Path, pins: &[Pin]) -> Result<String, EcosystemErro
             let Some(name) = dep.get("name").and_then(|n| n.as_str()).map(str::to_string) else {
                 continue;
             };
-            let Some(pin) = by_name.get(name.as_str()) else {
+            let repository = dep
+                .get("repository")
+                .and_then(|r| r.as_str())
+                .unwrap_or("")
+                .to_string();
+            let Some(pin) = pin_for(pins, &name, &repository) else {
                 continue;
             };
             if let Some(mapping) = dep.as_mapping_mut() {
@@ -76,7 +89,6 @@ fn rewrite_chart_yaml(path: &Path, pins: &[Pin]) -> Result<String, EcosystemErro
 
 fn rewrite_gitops_yaml(path: &Path, pins: &[Pin]) -> Result<String, EcosystemError> {
     let contents = std::fs::read_to_string(path)?;
-    let by_name = pin_by_name(pins);
     let mut docs = Vec::new();
 
     for doc in serde_yaml::Deserializer::from_str(&contents) {
@@ -84,7 +96,7 @@ fn rewrite_gitops_yaml(path: &Path, pins: &[Pin]) -> Result<String, EcosystemErr
             path: path.to_path_buf(),
             message: e.to_string(),
         })?;
-        rewrite_gitops_doc(&mut value, &by_name);
+        rewrite_gitops_doc(&mut value, pins);
         docs.push(value);
     }
 
@@ -109,13 +121,12 @@ fn rewrite_gitops_yaml(path: &Path, pins: &[Pin]) -> Result<String, EcosystemErr
     Ok(out)
 }
 
-fn rewrite_gitops_doc(value: &mut Value, by_name: &HashMap<&str, &Pin>) {
+fn rewrite_gitops_doc(value: &mut Value, pins: &[Pin]) {
     let Some(kind) = value.get("kind").and_then(|k| k.as_str()).map(str::to_string) else {
         return;
     };
     match kind.as_str() {
         "HelmRelease" => {
-            // spec.chart.spec.version
             let Some(chart_spec) = value
                 .get_mut("spec")
                 .and_then(|s| s.get_mut("chart"))
@@ -130,7 +141,13 @@ fn rewrite_gitops_doc(value: &mut Value, by_name: &HashMap<&str, &Pin>) {
             else {
                 return;
             };
-            let Some(pin) = by_name.get(name.as_str()) else {
+            let repository = chart_spec
+                .get("sourceRef")
+                .and_then(|s| s.get("name"))
+                .and_then(|n| n.as_str())
+                .unwrap_or("")
+                .to_string();
+            let Some(pin) = pin_for(pins, &name, &repository) else {
                 return;
             };
             if let Some(mapping) = chart_spec.as_mapping_mut() {
@@ -141,7 +158,6 @@ fn rewrite_gitops_doc(value: &mut Value, by_name: &HashMap<&str, &Pin>) {
             }
         }
         "Application" => {
-            // spec.source.targetRevision
             let Some(source) = value.get_mut("spec").and_then(|s| s.get_mut("source")) else {
                 return;
             };
@@ -152,7 +168,12 @@ fn rewrite_gitops_doc(value: &mut Value, by_name: &HashMap<&str, &Pin>) {
             else {
                 return;
             };
-            let Some(pin) = by_name.get(name.as_str()) else {
+            let repository = source
+                .get("repoURL")
+                .and_then(|r| r.as_str())
+                .unwrap_or("")
+                .to_string();
+            let Some(pin) = pin_for(pins, &name, &repository) else {
                 return;
             };
             if let Some(mapping) = source.as_mapping_mut() {

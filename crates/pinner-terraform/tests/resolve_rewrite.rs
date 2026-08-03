@@ -12,7 +12,9 @@ fn resolve_and_rewrite_via_env_map() {
     unsafe {
         std::env::set_var(
             "PINNER_TERRAFORM_RESOLVE_MAP",
-            format!("~> 5.0=5.1.0,{GIT_SOURCE}={GIT_SHA}"),
+            format!(
+                "vpc@~> 5.0=5.1.0,hashicorp/aws@~> 5.0=5.100.0,git_mod@{GIT_SOURCE}={GIT_SHA}"
+            ),
         );
     }
 
@@ -51,7 +53,7 @@ fn resolve_and_rewrite_via_env_map() {
     );
     assert!(
         pins.iter()
-            .any(|p| p.name == "hashicorp/aws" && p.pinned == "5.1.0")
+            .any(|p| p.name == "hashicorp/aws" && p.pinned == "5.100.0")
     );
 
     let modules = manifests
@@ -96,7 +98,7 @@ fn resolve_and_rewrite_via_env_map() {
         .unwrap()
         .expect("providers rewrite");
     assert!(
-        rw.new_contents.contains("version = \"5.1.0\""),
+        rw.new_contents.contains("version = \"5.100.0\""),
         "expected exact provider version, got:\n{}",
         rw.new_contents
     );

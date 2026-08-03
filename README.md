@@ -81,17 +81,19 @@ Global flags: `--config`, `--offline`, `--dry-run`, `--ecosystem mise,node`, `--
 Resolve order matches other ecosystems: existing `pinner.lock.json` pins first, then ecosystem-specific evidence, then network/tool resolve when online.
 
 - **Terraform providers:** may use `.terraform.lock.hcl` provider selections when present.
-- **Terraform git modules:** `git ls-remote` (or equivalent) when online; rewritten to pin `?ref=<full-sha>`.
-- **Registry HTTP clients** for Terraform module/provider registries and Helm chart repos/OCI are **not fully implemented** — offline/tests use env resolve maps; online Helm resolve still requires a map or lock today. K8s images use the shared Docker/buildx digest helper when online.
+- **Terraform git modules:** when online, `git ls-remote` can resolve a floating `ref` to a full SHA (rewritten as `?ref=<full-sha>`).
+- **Registry HTTP is not implemented** for Terraform module/provider registries or Helm chart repos/OCI. Those require a lock entry or `PINNER_*_RESOLVE_MAP` until HTTP resolve ships (offline or online). K8s images use the shared Docker/buildx digest helper when online.
 
 ### Test / CI resolve-map env vars
 
-Comma-separated `requested=pinned` pairs (see `pinner_iac_common::parse_resolve_map`). Keys may contain `=` (e.g. Terraform git `?ref=` URLs); use the **last** `=` as the separator. Empty keys are allowed (e.g. missing Helm chart version → `=1.2.3`).
+Comma-separated `{name}@{requested}=pinned` pairs (see `pinner_iac_common::parse_resolve_map` / `resolve_map_lookup`). Prefer the `name@requested` form so shared constraints (e.g. `~> 5.0`) do not collide across artifacts. Lookup tries `name@requested` first, then a legacy bare `requested` key.
+
+Keys may contain `=` (e.g. Terraform git `?ref=` URLs); use the **last** `=` as the separator. Empty `requested` (missing Helm chart version) uses `{name}@=` → key `{name}@`.
 
 ```bash
-export PINNER_TERRAFORM_RESOLVE_MAP='~> 5.0=5.1.0,git::https://example.com/org/mod.git?ref=main=11bd71901bbe5b1630ceea73d27597364c9af683'
-export PINNER_HELM_RESOLVE_MAP='^1.0.0=1.2.3'
-export PINNER_K8S_RESOLVE_MAP='nginx:latest=nginx@sha256:abc123…'
+export PINNER_TERRAFORM_RESOLVE_MAP='vpc@~> 5.0=5.1.0,hashicorp/aws@~> 5.0=5.100.0,git_mod@git::https://example.com/org/mod.git?ref=main=11bd71901bbe5b1630ceea73d27597364c9af683'
+export PINNER_HELM_RESOLVE_MAP='redis@^1.0.0=1.2.3,ingress-nginx@=4.10.0'
+export PINNER_K8S_RESOLVE_MAP='nginx@nginx:latest=nginx@sha256:abc123…'
 ```
 
 Network integration tests may require `PINNER_NETWORK=1`. With `--offline`, resolution fails closed unless the lock or resolve map supplies every pin.

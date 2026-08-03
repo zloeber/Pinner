@@ -123,7 +123,7 @@ fn resolve_and_rewrite_via_env_map() {
     unsafe {
         std::env::set_var(
             "PINNER_HELM_RESOLVE_MAP",
-            "*=18.6.1,^12.1.0=12.5.8,latest=15.5.0,=4.10.0,>=6.0.0=6.5.4,~2.4.0=2.4.17",
+            "redis@*=18.6.1,postgresql@^12.1.0=12.5.8,nginx@latest=15.5.0,ingress-nginx@=4.10.0,podinfo@>=6.0.0=6.5.4,argo-cd@~2.4.0=2.4.17",
         );
     }
 
@@ -166,6 +166,20 @@ fn resolve_and_rewrite_via_env_map() {
     assert!(
         pins.iter()
             .any(|p| p.name == "argo-cd" && p.pinned == "2.4.17")
+    );
+    let redis = pins.iter().find(|p| p.name == "redis").expect("redis pin");
+    assert_eq!(
+        redis.metadata.get("chart").and_then(|v| v.as_str()),
+        Some("redis")
+    );
+    assert_eq!(
+        redis.metadata.get("repository").and_then(|v| v.as_str()),
+        Some("https://charts.bitnami.com/bitnami")
+    );
+    let argo = pins.iter().find(|p| p.name == "argo-cd").expect("argo-cd pin");
+    assert_eq!(
+        argo.metadata.get("repository").and_then(|v| v.as_str()),
+        Some("https://argoproj.github.io/argo-helm")
     );
 
     let chart = manifests
@@ -236,6 +250,79 @@ fn resolve_and_rewrite_via_env_map() {
     assert_eq!(
         values_before, values_after,
         "values.yaml images must never be rewritten"
+    );
+
+    unsafe {
+        std::env::remove_var("PINNER_HELM_RESOLVE_MAP");
+    }
+}
+
+#[test]
+fn rewrite_matches_same_chart_name_by_repository() {
+    let _guard = env_lock().lock().unwrap();
+    unsafe {
+        std::env::set_var(
+            "PINNER_HELM_RESOLVE_MAP",
+            "redis@*=18.6.1,redis@^1.0.0=9.9.9",
+        );
+    }
+
+    let tmp = tempfile::tempdir().unwrap();
+    std::fs::write(
+        tmp.path().join("Chart.yaml"),
+        r#"apiVersion: v2
+name: umbrella
+version: 0.1.0
+dependencies:
+  - name: redis
+    version: "*"
+    repository: https://charts.bitnami.com/bitnami
+  - name: redis
+    version: "^1.0.0"
+    repository: https://example.com/other-charts
+"#,
+    )
+    .unwrap();
+
+    let eco = HelmEcosystem;
+    let ctx = ctx(tmp.path());
+    let manifests = eco.discover(tmp.path()).unwrap();
+    let findings: Vec<_> = manifests
+        .iter()
+        .flat_map(|m| eco.extract(m, &ctx).unwrap())
+        .filter(|f| f.is_floating)
+        .collect();
+    let pins = eco.resolve(&findings, &ctx).unwrap();
+    assert_eq!(pins.len(), 2);
+    assert!(
+        pins.iter().any(|p| {
+            p.pinned == "18.6.1"
+                && p.metadata.get("repository").and_then(|v| v.as_str())
+                    == Some("https://charts.bitnami.com/bitnami")
+        })
+    );
+    assert!(
+        pins.iter().any(|p| {
+            p.pinned == "9.9.9"
+                && p.metadata.get("repository").and_then(|v| v.as_str())
+                    == Some("https://example.com/other-charts")
+        })
+    );
+
+    let chart = &manifests[0];
+    let rw = eco
+        .rewrite(chart, &pins)
+        .unwrap()
+        .expect("Chart.yaml rewrite");
+    let value: serde_yaml::Value = serde_yaml::from_str(&rw.new_contents).unwrap();
+    let deps = value.get("dependencies").unwrap().as_sequence().unwrap();
+    assert_eq!(
+        deps[0].get("version").and_then(|v| v.as_str()),
+        Some("18.6.1")
+    );
+    assert_eq!(
+        deps[1].get("version").and_then(|v| v.as_str()),
+        Some("9.9.9")
     );
 
     unsafe {

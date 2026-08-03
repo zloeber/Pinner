@@ -4,7 +4,7 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::{Mutex, OnceLock};
 
-const RESOLVE_MAP: &str = "~> 5.0=5.1.0,git::https://example.com/org/mod.git?ref=main=11bd71901bbe5b1630ceea73d27597364c9af683";
+const RESOLVE_MAP: &str = "vpc@~> 5.0=5.1.0,hashicorp/aws@~> 5.0=5.100.0,git_mod@git::https://example.com/org/mod.git?ref=main=11bd71901bbe5b1630ceea73d27597364c9af683";
 
 fn env_lock() -> &'static Mutex<()> {
     static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
@@ -106,7 +106,7 @@ fn pin_then_check_is_clean_and_idempotent() {
 
     let providers_body = fs::read_to_string(&providers).unwrap();
     assert!(
-        providers_body.contains("version = \"5.1.0\""),
+        providers_body.contains("version = \"5.100.0\""),
         "aws provider should be pinned"
     );
 

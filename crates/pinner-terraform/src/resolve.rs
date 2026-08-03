@@ -7,7 +7,7 @@ use hcl_edit::structure::Body;
 use pinner_ecosystem::{
     absolute_in_repo, EcosystemCtx, EcosystemError, EcosystemKind, EvidenceKind, Finding, Pin,
 };
-use pinner_iac_common::{parse_resolve_map, resolve_git_sha};
+use pinner_iac_common::{parse_resolve_map, resolve_git_sha, resolve_map_lookup};
 use pinner_toolchain::{CommandRunner, RealCommandRunner};
 
 use crate::git_source::{git_pinned_source, is_git_or_http_requested};
@@ -51,8 +51,8 @@ fn resolve_one(
         });
     }
 
-    if let Some(pinned) = map.get(&finding.requested) {
-        return Ok(registry_pin(finding, pinned.clone(), EvidenceKind::Registry));
+    if let Some(pinned) = resolve_map_lookup(map, &finding.name, &finding.requested) {
+        return Ok(registry_pin(finding, pinned, EvidenceKind::Registry));
     }
 
     if is_provider_finding(finding)
@@ -89,7 +89,7 @@ fn resolve_one(
     Err(EcosystemError::Resolve {
         name: finding.name.clone(),
         requested: finding.requested.clone(),
-        hint: "set PINNER_TERRAFORM_RESOLVE_MAP (requested=pinned) for offline/tests, or enable network registry resolve".into(),
+        hint: "set PINNER_TERRAFORM_RESOLVE_MAP (name@requested=pinned) for offline/tests, or enable network registry resolve".into(),
     })
 }
 

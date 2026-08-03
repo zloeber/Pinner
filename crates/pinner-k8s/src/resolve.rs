@@ -5,7 +5,7 @@ use std::path::PathBuf;
 use pinner_ecosystem::{
     EcosystemCtx, EcosystemError, EcosystemKind, EvidenceKind, Finding, Pin,
 };
-use pinner_iac_common::{parse_resolve_map, resolve_image_digest};
+use pinner_iac_common::{parse_resolve_map, resolve_image_digest, resolve_map_lookup};
 use pinner_toolchain::{CommandRunner, RealCommandRunner};
 use serde_json::{Map, Value};
 
@@ -57,13 +57,8 @@ fn resolve_one(
         });
     }
 
-    if let Some(pinned) = map.get(&finding.requested) {
-        return Ok(k8s_pin(
-            finding,
-            pinned.clone(),
-            EvidenceKind::Registry,
-            &kind,
-        ));
+    if let Some(pinned) = resolve_map_lookup(map, &finding.name, &finding.requested) {
+        return Ok(k8s_pin(finding, pinned, EvidenceKind::Registry, &kind));
     }
 
     if ctx.offline {
