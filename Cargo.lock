@@ -379,6 +379,10 @@ name = "pinner-python"
 version = "0.1.0"
 dependencies = [
  "pinner-ecosystem",
+ "pinner-toolchain",
+ "toml",
+ "toml_edit",
+ "walkdir",
 ]
 
 [[package]]
