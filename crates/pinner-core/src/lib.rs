@@ -1,1 +1,4 @@
-//! Placeholder until Task N fills this crate in.
+pub mod error;
+pub mod lock;
+
+pub use error::CoreError;
