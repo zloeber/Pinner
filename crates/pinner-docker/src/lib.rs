@@ -1,10 +1,16 @@
+mod discover;
+mod extract;
+mod resolve;
+mod rewrite;
+
 use std::path::Path;
 
 use pinner_ecosystem::{
     Ecosystem, EcosystemCtx, EcosystemError, EcosystemKind, Finding, Manifest, Pin, Rewrite,
 };
 
-/// Temporary empty ecosystem stub until a later task fills docker discovery/extract/resolve/rewrite.
+/// Docker ecosystem: discover/extract/resolve/rewrite Dockerfiles and compose image refs.
+#[derive(Debug, Default, Clone, Copy)]
 pub struct DockerEcosystem;
 
 impl Ecosystem for DockerEcosystem {
@@ -12,31 +18,31 @@ impl Ecosystem for DockerEcosystem {
         EcosystemKind::Docker
     }
 
-    fn discover(&self, _repo: &Path) -> Result<Vec<Manifest>, EcosystemError> {
-        Ok(Vec::new())
+    fn discover(&self, repo: &Path) -> Result<Vec<Manifest>, EcosystemError> {
+        discover::discover(repo)
     }
 
     fn extract(
         &self,
-        _manifest: &Manifest,
-        _ctx: &EcosystemCtx<'_>,
+        manifest: &Manifest,
+        ctx: &EcosystemCtx<'_>,
     ) -> Result<Vec<Finding>, EcosystemError> {
-        Ok(Vec::new())
+        extract::extract(manifest, ctx)
     }
 
     fn resolve(
         &self,
-        _findings: &[Finding],
-        _ctx: &EcosystemCtx<'_>,
+        findings: &[Finding],
+        ctx: &EcosystemCtx<'_>,
     ) -> Result<Vec<Pin>, EcosystemError> {
-        Ok(Vec::new())
+        self.resolve_findings(findings, ctx)
     }
 
     fn rewrite(
         &self,
-        _manifest: &Manifest,
-        _pins: &[Pin],
+        manifest: &Manifest,
+        pins: &[Pin],
     ) -> Result<Option<Rewrite>, EcosystemError> {
-        Ok(None)
+        rewrite::rewrite(manifest, pins)
     }
 }
