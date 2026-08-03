@@ -3,7 +3,9 @@ use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use globset::Glob;
-use pinner_ecosystem::{Ecosystem, EcosystemCtx, EcosystemKind, Finding, Manifest, Pin};
+use pinner_ecosystem::{
+    Ecosystem, EcosystemCtx, EcosystemKind, EvidenceKind, Finding, Manifest, Pin,
+};
 
 use crate::error::CoreError;
 use crate::lock::{LockEntry, LockFile};
@@ -37,23 +39,25 @@ pub fn pin(
     };
 
     let mut report = RunReport::default();
+    let mut graph_pins = Vec::new();
     for ecosystem in selected_ecosystems(ecosystems, policy, opts) {
         let manifests = discover_manifests(ecosystem.as_ref(), policy, &opts.repo)?;
-        let mut findings = Vec::new();
+        let mut all_findings = Vec::new();
         for manifest in &manifests {
-            findings.extend(
-                ecosystem
-                    .extract(manifest, &ctx)?
-                    .into_iter()
-                    .filter(|finding| {
-                        finding.is_floating && !is_allowlisted(finding, policy, &opts.repo)
-                    }),
-            );
+            all_findings.extend(ecosystem.extract(manifest, &ctx)?);
         }
 
-        let pins = ecosystem.resolve(&findings, &ctx)?;
+        let floating: Vec<_> = all_findings
+            .iter()
+            .filter(|finding| {
+                finding.is_floating && !is_allowlisted(finding, policy, &opts.repo)
+            })
+            .cloned()
+            .collect();
+
+        let resolved = ecosystem.resolve(&floating, &ctx)?;
         for manifest in &manifests {
-            let manifest_pins: Vec<_> = pins
+            let manifest_pins: Vec<_> = resolved
                 .iter()
                 .filter(|pin| pin.path == manifest.path)
                 .cloned()
@@ -68,9 +72,11 @@ pub fn pin(
                 report.rewrites.push(rewrite);
             }
         }
-        report.findings.extend(findings);
-        report.pins.extend(pins);
+        report.findings.extend(floating);
+        graph_pins.extend(pins_for_full_graph(&all_findings, &resolved, &lock_pins, policy, &opts.repo));
     }
+
+    report.pins = dedupe_pins(graph_pins);
 
     if !opts.dry_run {
         LockFile::from_pins(&report.pins, env!("CARGO_PKG_VERSION"), &generated_at())
@@ -193,6 +199,69 @@ fn path_matches(allowed: &AllowFloating, path: &Path, repo: &Path) -> bool {
 
 fn same_item(finding: &Finding, pin: &Pin) -> bool {
     finding.ecosystem == pin.ecosystem && finding.name == pin.name && finding.path == pin.path
+}
+
+fn pin_key(pin: &Pin) -> (EcosystemKind, &Path, &str) {
+    (pin.ecosystem, pin.path.as_path(), pin.name.as_str())
+}
+
+fn pins_for_full_graph(
+    all_findings: &[Finding],
+    resolved: &[Pin],
+    prior_lock: &[Pin],
+    policy: &Policy,
+    repo: &Path,
+) -> Vec<Pin> {
+    let mut pins = Vec::new();
+    for finding in all_findings {
+        if finding.is_floating {
+            if is_allowlisted(finding, policy, repo) {
+                continue;
+            }
+            if let Some(pin) = resolved.iter().find(|pin| same_item(finding, pin)) {
+                pins.push(pin.clone());
+            }
+            continue;
+        }
+
+        if let Some(prior) = prior_lock
+            .iter()
+            .find(|pin| same_item(finding, pin) && pin.pinned == finding.requested)
+        {
+            pins.push(Pin {
+                ecosystem: finding.ecosystem,
+                name: finding.name.clone(),
+                requested: finding.requested.clone(),
+                pinned: finding.requested.clone(),
+                path: finding.path.clone(),
+                evidence: EvidenceKind::Lock,
+                metadata: prior.metadata.clone(),
+            });
+        } else {
+            pins.push(Pin {
+                ecosystem: finding.ecosystem,
+                name: finding.name.clone(),
+                requested: finding.requested.clone(),
+                pinned: finding.requested.clone(),
+                path: finding.path.clone(),
+                evidence: EvidenceKind::Tool,
+                metadata: Default::default(),
+            });
+        }
+    }
+    pins
+}
+
+fn dedupe_pins(pins: Vec<Pin>) -> Vec<Pin> {
+    let mut out = Vec::new();
+    for pin in pins {
+        if let Some(existing) = out.iter_mut().find(|p| pin_key(p) == pin_key(&pin)) {
+            *existing = pin;
+        } else {
+            out.push(pin);
+        }
+    }
+    out
 }
 
 fn lock_to_pins(lock: LockFile) -> Vec<Pin> {

@@ -1,6 +1,7 @@
 use std::path::Path;
 use std::sync::Arc;
 
+use pinner_core::lock::LockFile;
 use pinner_core::orchestrate::{RunOptions, check, pin};
 use pinner_core::policy::Policy;
 use pinner_ecosystem::{
@@ -111,6 +112,34 @@ fn pin_rewrites_and_writes_lock() {
     assert!(dir.path().join("pinner.lock.json").exists());
     let body = std::fs::read_to_string(dir.path().join(".mise.toml")).unwrap();
     assert!(body.contains("22.11.0"));
+}
+
+#[test]
+fn pin_twice_preserves_lock_and_stays_clean() {
+    let dir = tempdir().unwrap();
+    std::fs::write(
+        dir.path().join(".mise.toml"),
+        "[tools]\nnode = \"latest\"\n",
+    )
+    .unwrap();
+    let eco: Arc<dyn Ecosystem> = Arc::new(FakeEco);
+    let policy = Policy::default_policy();
+    let opts = options(dir.path());
+
+    pin(&[Arc::clone(&eco)], &policy, &opts).unwrap();
+    let lock_path = dir.path().join("pinner.lock.json");
+    let first = LockFile::read(&lock_path).unwrap();
+    assert_eq!(first.entries.len(), 1);
+    assert_eq!(first.entries[0].pinned, "22.11.0");
+
+    let clean = check(&[Arc::clone(&eco)], &policy, &opts).unwrap();
+    assert!(clean.drift.is_empty());
+
+    pin(&[eco], &policy, &opts).unwrap();
+    let second = LockFile::read(&lock_path).unwrap();
+    assert_eq!(second.entries.len(), first.entries.len());
+    assert_eq!(second.entries[0].pinned, first.entries[0].pinned);
+    assert_eq!(second.entries[0].name, first.entries[0].name);
 }
 
 #[test]
