@@ -1,0 +1,15 @@
+[book]
+title = "Pinner"
+description = "Pin floating dependency versions across tools and infrastructure-as-code"
+authors = ["Pinner contributors"]
+language = "en"
+src = "docs"
+
+[build]
+build-dir = "book"
+create-missing = false
+
+[output.html]
+git-repository-url = "https://github.com/zloeber/Pinner"
+edit-url-template = "https://github.com/zloeber/Pinner/edit/main/docs/{path}"
+site-url = "/Pinner/"

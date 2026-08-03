@@ -92,6 +92,18 @@ tasks:
       - task: test
       - task: test:schema
 
+  docs:
+    desc: Build mdBook documentation into ./book
+    cmds:
+      - cp README.md docs/README.md
+      - mdbook build
+
+  docs:serve:
+    desc: Serve mdBook locally (requires mdbook on PATH)
+    cmds:
+      - cp README.md docs/README.md
+      - mdbook serve --open
+
   run:
     desc: "Run pinner with args (example: task run -- pin --dry-run)"
     cmds:

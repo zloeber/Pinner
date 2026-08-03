@@ -2,9 +2,15 @@
 
 Pin floating dependency versions across mise, Node, Python, Docker, GitHub Actions, Terraform, Helm, and Kubernetes. Rewrite manifests to exact pins, commit a unified `pinner.lock.json`, and fail CI when the graph drifts.
 
+[![ci](https://github.com/zloeber/Pinner/actions/workflows/ci.yml/badge.svg)](https://github.com/zloeber/Pinner/actions/workflows/ci.yml)
+[![docs](https://github.com/zloeber/Pinner/actions/workflows/docs.yml/badge.svg)](https://github.com/zloeber/Pinner/actions/workflows/docs.yml)
+[![release](https://github.com/zloeber/Pinner/actions/workflows/release.yml/badge.svg)](https://github.com/zloeber/Pinner/actions/workflows/release.yml)
+
+Docs (GitHub Pages): <https://zloeber.github.io/Pinner/>
+
 ## Install
 
-From this repository:
+Download a multi-platform binary from [GitHub Releases](https://github.com/zloeber/Pinner/releases) (Linux/macOS/Windows), or build from source:
 
 ```bash
 cargo install --locked --path crates/pinner
@@ -180,8 +186,33 @@ task fmt              # cargo fmt
 task fmt:check        # formatting gate
 task clippy           # clippy -D warnings
 task ci               # fmt:check + clippy + test + schema
+task docs             # build mdBook into ./book (requires mdbook)
 task run -- pin --dry-run
 task pinner:audit
 ```
 
 Fixture matrix under `tests/fixtures/*-floating` covers mise, node, python, docker, actions, terraform, helm, and k8s.
+
+## CI, docs, and releases
+
+| Workflow | Trigger | Purpose |
+|----------|---------|---------|
+| [`ci.yml`](.github/workflows/ci.yml) | push / PR | **lint** (`fmt` + `clippy -D warnings`) and **test** (workspace + schema) |
+| [`docs.yml`](.github/workflows/docs.yml) | push to `main` (docs paths) | Build mdBook and deploy [GitHub Pages](https://zloeber.github.io/Pinner/) |
+| [`release.yml`](.github/workflows/release.yml) | tag `v*.*.*` | Multi-platform release binaries + GitHub Release |
+
+### Cutting a release (tag = semver)
+
+1. Bump `[workspace.package].version` in `Cargo.toml` (must match the tag without the leading `v`).
+2. Commit, then tag and push:
+
+```bash
+git tag -a v0.2.0 -m "v0.2.0"
+git push origin v0.2.0
+```
+
+The release workflow verifies the tag matches Cargo.toml, builds for Linux (x86_64 + aarch64), macOS (Intel + Apple Silicon), and Windows (x86_64), and attaches archives to the GitHub Release. Details: [docs/guide/releasing.md](docs/guide/releasing.md).
+
+### GitHub Pages setup (one-time)
+
+In the repo **Settings → Pages**, set **Source** to **GitHub Actions**. The first successful `docs` workflow on `main` publishes the site.

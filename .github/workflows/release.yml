@@ -1,0 +1,160 @@
+name: release
+
+# Tag-driven semantic releases: push a git tag matching vMAJOR.MINOR.PATCH
+# (e.g. v0.2.0). The tag version must match [workspace.package].version in Cargo.toml.
+on:
+  push:
+    tags:
+      - "v[0-9]+.[0-9]+.[0-9]+"
+      - "v[0-9]+.[0-9]+.[0-9]+-*"
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Build artifacts without creating a GitHub Release"
+        type: boolean
+        default: true
+
+permissions:
+  contents: write
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  meta:
+    name: version
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      tag: ${{ steps.version.outputs.tag }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Resolve version from tag or Cargo.toml
+        id: version
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo_version=$(sed -n '/^\[workspace.package\]/,/^\[/{s/^version = "\(.*\)"/\1/p;}' Cargo.toml | head -1)
+          if [[ "${GITHUB_REF_TYPE:-}" == "tag" ]]; then
+            tag="${GITHUB_REF_NAME}"
+            version="${tag#v}"
+            if [[ "$version" != "$cargo_version" ]]; then
+              echo "::error::Tag $tag does not match Cargo.toml workspace version $cargo_version"
+              echo "Bump [workspace.package].version in Cargo.toml before tagging."
+              exit 1
+            fi
+          else
+            version="$cargo_version"
+            tag="v${version}"
+            echo "::notice::workflow_dispatch dry-run using Cargo.toml version $version"
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          echo "Resolved release version: $version (tag $tag)"
+
+  build:
+    name: build (${{ matrix.target }})
+    needs: meta
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+            archive: tar.gz
+          - os: ubuntu-24.04-arm
+            target: aarch64-unknown-linux-gnu
+            archive: tar.gz
+          - os: macos-13
+            target: x86_64-apple-darwin
+            archive: tar.gz
+          - os: macos-latest
+            target: aarch64-apple-darwin
+            archive: tar.gz
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+            archive: zip
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: Build release binary
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo build --locked --release -p pinner --target ${{ matrix.target }}
+
+      - name: Package artifact
+        id: package
+        shell: bash
+        run: |
+          set -euo pipefail
+          version="${{ needs.meta.outputs.version }}"
+          target="${{ matrix.target }}"
+          bin_name="pinner"
+          ext=""
+          if [[ "${{ matrix.os }}" == windows-latest ]]; then
+            ext=".exe"
+          fi
+          src="target/${target}/release/${bin_name}${ext}"
+          stage="dist/${bin_name}-${version}-${target}"
+          mkdir -p "$stage"
+          cp "$src" "$stage/"
+          cp README.md "$stage/"
+          if [[ -f LICENSE ]]; then
+            cp LICENSE "$stage/"
+          fi
+          mkdir -p dist
+          if [[ "${{ matrix.archive }}" == "zip" ]]; then
+            asset="${bin_name}-${version}-${target}.zip"
+            (cd dist && zip -r "$asset" "$(basename "$stage")")
+          else
+            asset="${bin_name}-${version}-${target}.tar.gz"
+            tar -C dist -czf "dist/${asset}" "$(basename "$stage")"
+          fi
+          echo "asset=$asset" >> "$GITHUB_OUTPUT"
+          ls -la "dist/${asset}"
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: pinner-${{ matrix.target }}
+          path: dist/${{ steps.package.outputs.asset }}
+          if-no-files-found: error
+          retention-days: 14
+
+  publish:
+    name: publish-release
+    needs: [meta, build]
+    if: >-
+      github.event_name == 'push' ||
+      (github.event_name == 'workflow_dispatch' && inputs.dry_run == 'false')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
+
+      - name: List release assets
+        run: find artifacts -type f | sort
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ needs.meta.outputs.tag }}
+          name: Pinner ${{ needs.meta.outputs.tag }}
+          generate_release_notes: true
+          files: artifacts/*
+          fail_on_unmatched_files: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

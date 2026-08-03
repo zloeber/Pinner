@@ -1,5 +1,7 @@
 .worktrees/
 /target
+/book
+docs/README.md
 **/*.rs.bk
 .DS_Store
 mise.local.toml
