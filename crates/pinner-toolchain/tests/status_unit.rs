@@ -3,7 +3,12 @@ use pinner_toolchain::{
     CommandOutput, CommandRunner, ToolchainError, ensure_with_runner, required_tools, status,
 };
 use std::collections::HashSet;
-use std::sync::Mutex;
+use std::sync::{Mutex, OnceLock};
+
+fn env_lock() -> &'static Mutex<()> {
+    static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+    LOCK.get_or_init(|| Mutex::new(()))
+}
 
 struct FakeRunner {
     present: Mutex<HashSet<String>>,
@@ -151,7 +156,12 @@ fn ensure_does_not_claim_tools_present_when_install_does_not_make_them_runnable(
 }
 
 #[test]
-fn ensure_verifies_mise_after_bootstrap() {
+fn ensure_refuses_curl_bootstrap_without_env_gate() {
+    let _guard = env_lock().lock().unwrap();
+    // SAFETY: test-only env seam; serialized via env_lock.
+    unsafe {
+        std::env::remove_var("PINNER_BOOTSTRAP_MISE");
+    }
     let fake = FakeRunner {
         present: Mutex::new(HashSet::new()),
         installs: Mutex::new(vec![]),
@@ -165,6 +175,45 @@ fn ensure_verifies_mise_after_bootstrap() {
         err,
         ToolchainError::Missing { tools } if tools == ["mise"]
     ));
+    let commands = fake.commands.lock().unwrap();
+    assert!(
+        !commands
+            .iter()
+            .any(|command| command.starts_with("sh -c curl")),
+        "curl|sh must not run without PINNER_BOOTSTRAP_MISE=1: {commands:?}"
+    );
+}
+
+#[test]
+fn ensure_verifies_mise_after_bootstrap_when_gated() {
+    let _guard = env_lock().lock().unwrap();
+    // SAFETY: test-only env seam; serialized via env_lock.
+    unsafe {
+        std::env::set_var("PINNER_BOOTSTRAP_MISE", "1");
+    }
+    let fake = FakeRunner {
+        present: Mutex::new(HashSet::new()),
+        installs: Mutex::new(vec![]),
+        commands: Mutex::new(vec![]),
+        installs_are_effective: true,
+    };
+
+    let err = ensure_with_runner(&fake, &[EcosystemKind::Mise], true, false).unwrap_err();
+    unsafe {
+        std::env::remove_var("PINNER_BOOTSTRAP_MISE");
+    }
+
+    assert!(matches!(
+        err,
+        ToolchainError::Missing { tools } if tools == ["mise"]
+    ));
+    let commands = fake.commands.lock().unwrap();
+    assert!(
+        commands
+            .iter()
+            .any(|command| command.starts_with("sh -c curl")),
+        "expected curl bootstrap when gated: {commands:?}"
+    );
 }
 
 #[test]

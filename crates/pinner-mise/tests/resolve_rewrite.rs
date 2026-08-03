@@ -1,4 +1,4 @@
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, OnceLock};
 
 use pinner_ecosystem::{
@@ -64,6 +64,7 @@ fn prefers_lock_pin_over_tool() {
         metadata: Default::default(),
     };
     let ctx = EcosystemCtx {
+        repo: Path::new("."),
         lock_pins: &[lock],
         offline: false,
         pin_exact_ranges: true,
@@ -94,6 +95,7 @@ fn resolve_map_used_before_mise() {
         is_floating: true,
     };
     let ctx = EcosystemCtx {
+        repo: Path::new("."),
         lock_pins: &[],
         offline: false,
         pin_exact_ranges: true,
@@ -135,6 +137,7 @@ fn offline_without_lock_or_map_errors() {
         is_floating: true,
     };
     let ctx = EcosystemCtx {
+        repo: Path::new("."),
         lock_pins: &[],
         offline: true,
         pin_exact_ranges: true,
@@ -171,6 +174,7 @@ fn resolves_via_mise_latest() {
         is_floating: true,
     };
     let ctx = EcosystemCtx {
+        repo: Path::new("."),
         lock_pins: &[],
         offline: false,
         pin_exact_ranges: true,

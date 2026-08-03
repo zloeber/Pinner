@@ -1,6 +1,6 @@
 use pinner_ecosystem::{Ecosystem, EcosystemCtx};
 use pinner_actions::ActionsEcosystem;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 #[test]
 fn pins_action_tag_to_sha_with_comment() {
@@ -13,7 +13,7 @@ fn pins_action_tag_to_sha_with_comment() {
     }
     let repo = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../tests/fixtures/actions-floating");
     let eco = ActionsEcosystem;
-    let ctx = EcosystemCtx { lock_pins: &[], offline: false, pin_exact_ranges: true };
+    let ctx = EcosystemCtx { repo: Path::new("."), lock_pins: &[], offline: false, pin_exact_ranges: true };
     let manifests = eco.discover(&repo).unwrap();
     let findings = eco.extract(&manifests[0], &ctx).unwrap();
     assert!(findings[0].is_floating);

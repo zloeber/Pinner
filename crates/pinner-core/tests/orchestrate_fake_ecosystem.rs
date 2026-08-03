@@ -299,3 +299,122 @@ fn pin_with_ecosystem_filter_preserves_unselected_lock_entries() {
     assert_eq!(node_after.name, node_before.name);
     assert_eq!(node_after.path, node_before.path);
 }
+
+#[test]
+fn lock_paths_are_repo_relative_and_portable_across_copy() {
+    let a = tempdir().unwrap();
+    std::fs::write(
+        a.path().join(".mise.toml"),
+        "[tools]\nnode = \"latest\"\n",
+    )
+    .unwrap();
+    let eco: Arc<dyn Ecosystem> = Arc::new(FakeEco);
+    let policy = Policy::default_policy();
+
+    pin(&[Arc::clone(&eco)], &policy, &options(a.path())).unwrap();
+
+    let lock_raw = std::fs::read_to_string(a.path().join("pinner.lock.json")).unwrap();
+    assert!(
+        !lock_raw.contains(a.path().to_string_lossy().as_ref()),
+        "lock must not embed absolute temp path: {lock_raw}"
+    );
+    let lock = LockFile::read(&a.path().join("pinner.lock.json")).unwrap();
+    for entry in &lock.entries {
+        assert!(
+            entry.path.is_relative(),
+            "expected relative lock path, got {}",
+            entry.path.display()
+        );
+    }
+
+    let b = tempdir().unwrap();
+    for name in [".mise.toml", "pinner.lock.json"] {
+        std::fs::copy(a.path().join(name), b.path().join(name)).unwrap();
+    }
+
+    let report = check(&[eco], &policy, &options(b.path())).unwrap();
+    assert!(
+        report.drift.is_empty(),
+        "check after copy should be clean, drift={:?}",
+        report.drift
+    );
+}
+
+struct FailNodeEco;
+
+impl Ecosystem for FailNodeEco {
+    fn kind(&self) -> EcosystemKind {
+        EcosystemKind::Node
+    }
+
+    fn discover(&self, repo: &Path) -> Result<Vec<Manifest>, EcosystemError> {
+        Ok(vec![Manifest {
+            ecosystem: self.kind(),
+            path: repo.join("package.json"),
+        }])
+    }
+
+    fn extract(
+        &self,
+        manifest: &Manifest,
+        _ctx: &EcosystemCtx<'_>,
+    ) -> Result<Vec<Finding>, EcosystemError> {
+        Ok(vec![Finding {
+            ecosystem: EcosystemKind::Node,
+            name: "left-pad".into(),
+            requested: "^1.0.0".into(),
+            path: manifest.path.clone(),
+            is_floating: true,
+        }])
+    }
+
+    fn resolve(
+        &self,
+        _findings: &[Finding],
+        _ctx: &EcosystemCtx<'_>,
+    ) -> Result<Vec<Pin>, EcosystemError> {
+        Err(EcosystemError::Resolve {
+            name: "left-pad".into(),
+            requested: "^1.0.0".into(),
+            hint: "intentional failure for atomicity test".into(),
+        })
+    }
+
+    fn rewrite(
+        &self,
+        _manifest: &Manifest,
+        _pins: &[Pin],
+    ) -> Result<Option<Rewrite>, EcosystemError> {
+        unreachable!("rewrite must not run when resolve fails")
+    }
+}
+
+#[test]
+fn pin_writes_nothing_when_later_ecosystem_resolve_fails() {
+    let dir = tempdir().unwrap();
+    let mise_path = dir.path().join(".mise.toml");
+    let original = "[tools]\nnode = \"latest\"\n";
+    std::fs::write(&mise_path, original).unwrap();
+    std::fs::write(
+        dir.path().join("package.json"),
+        "{\n  \"dependencies\": {\n    \"left-pad\": \"^1.0.0\"\n  }\n}\n",
+    )
+    .unwrap();
+
+    let mise: Arc<dyn Ecosystem> = Arc::new(FakeEco);
+    let node: Arc<dyn Ecosystem> = Arc::new(FailNodeEco);
+    let err = pin(
+        &[mise, node],
+        &Policy::default_policy(),
+        &options(dir.path()),
+    )
+    .unwrap_err();
+    assert!(matches!(err, pinner_core::CoreError::Ecosystem(_)));
+
+    let body = std::fs::read_to_string(&mise_path).unwrap();
+    assert_eq!(body, original, "manifest must be untouched on resolve failure");
+    assert!(
+        !dir.path().join("pinner.lock.json").exists(),
+        "lock must not be written on resolve failure"
+    );
+}

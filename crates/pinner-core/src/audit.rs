@@ -35,6 +35,7 @@ pub fn audit(
         Vec::new()
     };
     let ctx = EcosystemCtx {
+        repo: &opts.repo,
         lock_pins: &lock_pins,
         offline: opts.offline,
         pin_exact_ranges: policy.pin_exact_ranges,
@@ -100,6 +101,7 @@ fn explain_via_resolve(
         Vec::new()
     };
     let ctx = EcosystemCtx {
+        repo: &opts.repo,
         lock_pins: &lock_pins,
         offline: opts.offline,
         pin_exact_ranges: policy.pin_exact_ranges,

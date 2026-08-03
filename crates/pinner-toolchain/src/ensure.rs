@@ -1,5 +1,5 @@
 use std::env;
-use std::io;
+use std::io::{self, Write};
 use std::process::Command;
 
 use pinner_ecosystem::EcosystemKind;
@@ -88,10 +88,33 @@ pub fn ensure_with_runner(
         .any(|tool| matches!(tool.as_str(), "mise" | "node" | "npm" | "uv" | "gh"));
 
     if needs_mise && !mise_available {
-        run_checked(runner, "sh", &["-c", "curl https://mise.run | sh"])?;
+        // Prefer already-installed mise on common paths (detect PATH enrichment) before
+        // any network bootstrap. curl|sh is gated behind PINNER_BOOTSTRAP_MISE=1.
         mise_available = command_succeeds(runner, "mise", &["--version"]);
         if !mise_available {
-            return Err(ToolchainError::Missing { tools: missing });
+            if !bootstrap_mise_allowed() {
+                let mut hint = missing.clone();
+                if !hint.iter().any(|t| t == "mise") {
+                    hint.insert(0, "mise".to_string());
+                }
+                let _ = writeln!(
+                    io::stderr(),
+                    "pinner: mise is not installed. Prefer installing mise yourself \
+                     (https://mise.jdx.dev). To allow pinner to bootstrap via curl|sh, \
+                     set PINNER_BOOTSTRAP_MISE=1 with toolchain.install / --allow-install."
+                );
+                return Err(ToolchainError::Missing { tools: hint });
+            }
+            let _ = writeln!(
+                io::stderr(),
+                "pinner: WARNING: bootstrapping mise via `curl https://mise.run | sh` \
+                 (PINNER_BOOTSTRAP_MISE=1). Prefer a preinstalled mise binary."
+            );
+            run_checked(runner, "sh", &["-c", "curl https://mise.run | sh"])?;
+            mise_available = command_succeeds(runner, "mise", &["--version"]);
+            if !mise_available {
+                return Err(ToolchainError::Missing { tools: missing });
+            }
         }
     }
 
@@ -122,6 +145,11 @@ pub fn ensure_with_runner(
             tools: still_missing,
         })
     }
+}
+
+fn bootstrap_mise_allowed() -> bool {
+    env::var("PINNER_BOOTSTRAP_MISE")
+        .is_ok_and(|value| matches!(value.to_ascii_lowercase().as_str(), "1" | "true" | "yes"))
 }
 
 fn run_checked(

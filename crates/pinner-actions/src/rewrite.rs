@@ -82,13 +82,14 @@ fn replace_uses_line(line: &str, uses: &str, pin: &Pin) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::replace_uses_line;
+    use super::{replace_uses_line, rewrite_file};
     use pinner_ecosystem::{EcosystemKind, EvidenceKind, Pin};
+    use std::fs;
     use std::path::PathBuf;
+    use tempfile::tempdir;
 
-    #[test]
-    fn rewrites_with_sha_and_tag_comment() {
-        let pin = Pin {
+    fn checkout_pin() -> Pin {
+        Pin {
             ecosystem: EcosystemKind::Actions,
             name: "actions/checkout".into(),
             requested: "actions/checkout@v4".into(),
@@ -96,12 +97,40 @@ mod tests {
             path: PathBuf::from("ci.yml"),
             evidence: EvidenceKind::Registry,
             metadata: Default::default(),
-        };
+        }
+    }
+
+    #[test]
+    fn rewrites_with_sha_and_tag_comment() {
+        let pin = checkout_pin();
         let line = "      - uses: actions/checkout@v4";
         let rewritten = replace_uses_line(line, "actions/checkout@v4", &pin);
         assert_eq!(
             rewritten,
             "      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4"
         );
+    }
+
+    #[test]
+    fn rewrites_nested_steps_and_preserves_surrounding_comments() {
+        // Line-oriented rewrite: preserves indentation and unrelated comments.
+        // Limitation: does not round-trip full YAML AST / flow-style nodes.
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("ci.yml");
+        fs::write(
+            &path,
+            "name: ci\njobs:\n  build:\n    steps:\n      # checkout first\n      - name: Checkout\n        uses: actions/checkout@v4\n      - run: echo hi\n  nest:\n    steps:\n      - uses: actions/checkout@v4\n",
+        )
+        .unwrap();
+        let out = rewrite_file(&path, &[checkout_pin()]).unwrap();
+        assert!(out.contains("# checkout first"));
+        assert!(out.contains(
+            "        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4"
+        ));
+        assert!(out.contains(
+            "      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4"
+        ));
+        assert!(out.contains("- run: echo hi"));
+        assert!(!out.contains("actions/checkout@v4\n"));
     }
 }

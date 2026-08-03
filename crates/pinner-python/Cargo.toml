@@ -11,3 +11,6 @@ pinner-toolchain = { workspace = true }
 toml = { workspace = true }
 toml_edit = { workspace = true }
 walkdir = { workspace = true }
+
+[dev-dependencies]
+tempfile = { workspace = true }

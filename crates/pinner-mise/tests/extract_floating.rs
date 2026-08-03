@@ -1,4 +1,4 @@
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use pinner_ecosystem::{Ecosystem, EcosystemCtx};
 use pinner_mise::MiseEcosystem;
@@ -17,6 +17,7 @@ fn extracts_latest_as_floating() {
     let eco = MiseEcosystem::default();
     let m = eco.discover(&repo).unwrap();
     let ctx = EcosystemCtx {
+        repo: Path::new("."),
         lock_pins: &[],
         offline: false,
         pin_exact_ranges: true,

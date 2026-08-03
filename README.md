@@ -66,7 +66,20 @@ pinner toolchain status
 pinner toolchain ensure
 ```
 
-Runtime resolution prefers `pinner.lock.json` and native locks, so tools are not required for every `check` once the lock is complete.
+**Prefer a preinstalled [mise](https://mise.jdx.dev)** (checked on `PATH` and common locations such as `~/.local/bin/mise`). `toolchain.install = true` (or ensure with install allowed) may install tools *through* mise, but will **not** download mise via `curl|sh` unless you also set:
+
+```bash
+export PINNER_BOOTSTRAP_MISE=1
+pinner toolchain ensure
+```
+
+That bootstrap prints a warning to stderr. Prefer installing mise yourself in CI images and developer machines.
+
+Runtime resolution prefers `pinner.lock.json` and native locks (`package-lock.json` / `pnpm-lock.yaml` / `yarn.lock`, `uv.lock` / `poetry.lock` / `pdm.lock`), so tools are not required for every `check` once the lock is complete.
+
+### Actions / Compose rewrite notes
+
+GitHub Actions `uses:` and Compose `image:` rewrites are line-oriented and preserve indentation for common list forms (`- uses: …`, nested `steps:`). Full YAML comment round-trips are not guaranteed for exotic multi-line or flow-style nodes.
 
 ## CI
 

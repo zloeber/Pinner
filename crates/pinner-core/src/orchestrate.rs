@@ -4,7 +4,8 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use globset::Glob;
 use pinner_ecosystem::{
-    Ecosystem, EcosystemCtx, EcosystemKind, EvidenceKind, Finding, Manifest, Pin,
+    Ecosystem, EcosystemCtx, EcosystemKind, EvidenceKind, Finding, Manifest, Pin, Rewrite,
+    repo_relative,
 };
 
 use crate::error::CoreError;
@@ -21,6 +22,10 @@ pub struct RunOptions {
     pub ecosystems_filter: Option<Vec<EcosystemKind>>,
 }
 
+struct StagedRewrite {
+    rewrite: Rewrite,
+}
+
 pub fn pin(
     ecosystems: &[Arc<dyn Ecosystem>],
     policy: &Policy,
@@ -33,6 +38,7 @@ pub fn pin(
         Vec::new()
     };
     let ctx = EcosystemCtx {
+        repo: &opts.repo,
         lock_pins: &lock_pins,
         offline: opts.offline,
         pin_exact_ranges: policy.pin_exact_ranges,
@@ -41,8 +47,12 @@ pub fn pin(
     let selected: Vec<_> = selected_ecosystems(ecosystems, policy, opts).collect();
     let selected_kinds: Vec<EcosystemKind> = selected.iter().map(|e| e.kind()).collect();
 
+    // Phase 1: discover/extract/resolve for every selected ecosystem; stage rewrites
+    // in memory. On any resolve failure, write nothing.
     let mut report = RunReport::default();
     let mut graph_pins = Vec::new();
+    let mut staged: Vec<StagedRewrite> = Vec::new();
+
     for ecosystem in &selected {
         let (manifests, all_findings) =
             discover_and_extract(ecosystem.as_ref(), policy, &opts.repo, &ctx)?;
@@ -57,23 +67,28 @@ pub fn pin(
 
         let resolved = ecosystem.resolve(&floating, &ctx)?;
         for manifest in &manifests {
+            let rel = repo_relative(&opts.repo, &manifest.path);
             let manifest_pins: Vec<_> = resolved
                 .iter()
-                .filter(|pin| pin.path == manifest.path)
+                .filter(|pin| pin.path == rel)
                 .cloned()
                 .collect();
             if manifest_pins.is_empty() {
                 continue;
             }
-            if let Some(rewrite) = ecosystem.rewrite(manifest, &manifest_pins)? {
-                if !opts.dry_run {
-                    std::fs::write(&rewrite.path, &rewrite.new_contents)?;
-                }
-                report.rewrites.push(rewrite);
+            if let Some(mut rewrite) = ecosystem.rewrite(manifest, &manifest_pins)? {
+                rewrite.path = repo_relative(&opts.repo, &rewrite.path);
+                staged.push(StagedRewrite { rewrite });
             }
         }
         report.findings.extend(floating);
-        graph_pins.extend(pins_for_full_graph(&all_findings, &resolved, &lock_pins, policy, &opts.repo));
+        graph_pins.extend(pins_for_full_graph(
+            &all_findings,
+            &resolved,
+            &lock_pins,
+            policy,
+            &opts.repo,
+        ));
     }
 
     // Preserve prior lock entries for ecosystems not visited this run, then overlay
@@ -85,9 +100,19 @@ pub fn pin(
     combined.extend(graph_pins);
     report.pins = dedupe_pins(combined);
 
+    // Phase 2: only after all resolves succeed, write rewrites + lock.
     if !opts.dry_run {
+        for staged_rw in &staged {
+            let abs = if staged_rw.rewrite.path.is_absolute() {
+                staged_rw.rewrite.path.clone()
+            } else {
+                opts.repo.join(&staged_rw.rewrite.path)
+            };
+            std::fs::write(&abs, &staged_rw.rewrite.new_contents)?;
+        }
         write_lock_idempotent(&lock_path, &report.pins)?;
     }
+    report.rewrites = staged.into_iter().map(|s| s.rewrite).collect();
 
     Ok(report)
 }
@@ -104,6 +129,7 @@ pub fn check(
 
     let lock_pins = lock_to_pins(LockFile::read(&lock_path)?);
     let ctx = EcosystemCtx {
+        repo: &opts.repo,
         lock_pins: &lock_pins,
         offline: true,
         pin_exact_ranges: policy.pin_exact_ranges,
@@ -176,8 +202,8 @@ pub(crate) fn discover_manifests(
         .discover(repo)?
         .into_iter()
         .filter(|manifest| {
-            let path = manifest.path.strip_prefix(repo).unwrap_or(&manifest.path);
-            !policy.is_ignored(path)
+            let path = repo_relative(repo, &manifest.path);
+            !policy.is_ignored(&path)
         })
         .collect())
 }
@@ -191,6 +217,8 @@ pub(crate) fn is_allowlisted(finding: &Finding, policy: &Policy, repo: &Path) ->
 }
 
 /// Discover manifests and extract findings for one ecosystem (shared by pin/check/audit/explain).
+/// Finding paths are normalized to repo-relative for portable lock/check comparisons.
+/// Manifest paths remain absolute for I/O in rewrite.
 pub(crate) fn discover_and_extract(
     ecosystem: &dyn Ecosystem,
     policy: &Policy,
@@ -200,7 +228,10 @@ pub(crate) fn discover_and_extract(
     let manifests = discover_manifests(ecosystem, policy, repo)?;
     let mut findings = Vec::new();
     for manifest in &manifests {
-        findings.extend(ecosystem.extract(manifest, ctx)?);
+        for mut finding in ecosystem.extract(manifest, ctx)? {
+            finding.path = repo_relative(repo, &finding.path);
+            findings.push(finding);
+        }
     }
     Ok((manifests, findings))
 }
@@ -209,7 +240,7 @@ fn path_matches(allowed: &AllowFloating, path: &Path, repo: &Path) -> bool {
     let Some(pattern) = &allowed.path_glob else {
         return true;
     };
-    let relative = path.strip_prefix(repo).unwrap_or(path);
+    let relative = repo_relative(repo, path);
     Glob::new(pattern)
         .map(|glob| glob.compile_matcher().is_match(relative))
         .unwrap_or(false)
@@ -243,7 +274,7 @@ fn pins_for_full_graph(
                     name: pin.name.clone(),
                     requested: pin.pinned.clone(),
                     pinned: pin.pinned.clone(),
-                    path: pin.path.clone(),
+                    path: repo_relative(repo, &pin.path),
                     evidence: pin.evidence,
                     metadata: pin.metadata.clone(),
                 });

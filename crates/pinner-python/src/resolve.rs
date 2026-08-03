@@ -2,7 +2,7 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
 use pinner_ecosystem::{
-    EcosystemCtx, EcosystemError, EcosystemKind, EvidenceKind, Finding, Pin,
+    EcosystemCtx, EcosystemError, EcosystemKind, EvidenceKind, Finding, Pin, absolute_in_repo,
 };
 use pinner_toolchain::{CommandRunner, RealCommandRunner};
 
@@ -47,33 +47,13 @@ fn resolve_one(
         });
     }
 
-    let dir = finding
-        .path
+    let abs_path = absolute_in_repo(ctx.repo, &finding.path);
+    let dir = abs_path
         .parent()
         .unwrap_or_else(|| Path::new("."))
         .to_path_buf();
 
-    if !lock_cache.contains_key(&dir) {
-        let map = read_uv_lock_versions(&dir.join("uv.lock"))?;
-        lock_cache.insert(dir.clone(), map);
-    }
-
-    if let Some(Some(versions)) = lock_cache.get(&dir)
-        && let Some(version) = versions.get(&finding.name)
-    {
-        return Ok(Pin {
-            ecosystem: EcosystemKind::Python,
-            name: finding.name.clone(),
-            requested: finding.requested.clone(),
-            pinned: version.clone(),
-            path: finding.path.clone(),
-            evidence: EvidenceKind::NativeLock,
-            metadata: Default::default(),
-        });
-    }
-
-    // Also search ancestors for uv.lock (monorepo / nested requirements).
-    if let Some(version) = find_uv_lock_in_ancestors(&dir, &finding.name, lock_cache)? {
+    if let Some(version) = find_python_lock_version(&dir, &finding.name, lock_cache)? {
         return Ok(Pin {
             ecosystem: EcosystemKind::Python,
             name: finding.name.clone(),
@@ -111,7 +91,7 @@ fn resolve_one(
     })
 }
 
-fn find_uv_lock_in_ancestors(
+fn find_python_lock_version(
     start: &Path,
     name: &str,
     lock_cache: &mut HashMap<PathBuf, Option<HashMap<String, String>>>,
@@ -119,7 +99,7 @@ fn find_uv_lock_in_ancestors(
     let mut current = start.to_path_buf();
     loop {
         if !lock_cache.contains_key(&current) {
-            let map = read_uv_lock_versions(&current.join("uv.lock"))?;
+            let map = read_python_lock_versions(&current)?;
             lock_cache.insert(current.clone(), map);
         }
         if let Some(Some(versions)) = lock_cache.get(&current)
@@ -134,7 +114,19 @@ fn find_uv_lock_in_ancestors(
     Ok(None)
 }
 
-fn read_uv_lock_versions(
+/// Prefer uv.lock, then poetry.lock, then pdm.lock.
+fn read_python_lock_versions(
+    dir: &Path,
+) -> Result<Option<HashMap<String, String>>, EcosystemError> {
+    for name in ["uv.lock", "poetry.lock", "pdm.lock"] {
+        if let Some(map) = read_toml_package_lock(&dir.join(name))? {
+            return Ok(Some(map));
+        }
+    }
+    Ok(None)
+}
+
+fn read_toml_package_lock(
     lock_path: &Path,
 ) -> Result<Option<HashMap<String, String>>, EcosystemError> {
     if !lock_path.is_file() {
@@ -147,7 +139,7 @@ fn read_uv_lock_versions(
     })?;
 
     let Some(packages) = value.get("package").and_then(|p| p.as_array()) else {
-        // uv.lock uses [[package]] → toml key "package" array
+        // uv/poetry/pdm use [[package]] → toml key "package" array
         return Ok(None);
     };
 
@@ -278,4 +270,37 @@ fn split_name_spec(line: &str) -> Option<(String, &str)> {
         return None;
     }
     Some((line[..i].to_string(), line[i..].trim_start()))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::read_toml_package_lock;
+    use std::fs;
+    use tempfile::tempdir;
+
+    #[test]
+    fn reads_poetry_lock_packages() {
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("poetry.lock");
+        fs::write(
+            &path,
+            "[[package]]\nname = \"requests\"\nversion = \"2.32.3\"\ndescription = \"HTTP\"\n",
+        )
+        .unwrap();
+        let map = read_toml_package_lock(&path).unwrap().unwrap();
+        assert_eq!(map.get("requests").map(String::as_str), Some("2.32.3"));
+    }
+
+    #[test]
+    fn reads_pdm_lock_packages() {
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("pdm.lock");
+        fs::write(
+            &path,
+            "[[package]]\nname = \"httpx\"\nversion = \"0.27.0\"\nrequires_python = \">=3.8\"\n",
+        )
+        .unwrap();
+        let map = read_toml_package_lock(&path).unwrap().unwrap();
+        assert_eq!(map.get("httpx").map(String::as_str), Some("0.27.0"));
+    }
 }

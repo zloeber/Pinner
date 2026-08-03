@@ -70,9 +70,27 @@ pub struct Rewrite {
 
 #[derive(Debug, Clone)]
 pub struct EcosystemCtx<'a> {
+    pub repo: &'a Path,
     pub lock_pins: &'a [Pin],
     pub offline: bool,
     pub pin_exact_ranges: bool,
+}
+
+/// Resolve a manifest/finding path for I/O: absolute paths are used as-is;
+/// repo-relative paths are joined onto `repo`.
+pub fn absolute_in_repo(repo: &Path, path: &Path) -> PathBuf {
+    if path.is_absolute() {
+        path.to_path_buf()
+    } else {
+        repo.join(path)
+    }
+}
+
+/// Strip `repo` prefix when present so lock/finding/pin paths stay portable.
+pub fn repo_relative(repo: &Path, path: &Path) -> PathBuf {
+    path.strip_prefix(repo)
+        .map(|p| p.to_path_buf())
+        .unwrap_or_else(|_| path.to_path_buf())
 }
 
 #[derive(Debug, Error)]

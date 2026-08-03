@@ -756,6 +756,7 @@ dependencies = [
  "pinner-ecosystem",
  "pinner-toolchain",
  "serde_json",
+ "tempfile",
  "walkdir",
 ]
 
@@ -780,6 +781,7 @@ dependencies = [
  "pinner-toolchain",
  "serde",
  "serde_yaml",
+ "tempfile",
  "walkdir",
 ]
 
@@ -811,6 +813,8 @@ dependencies = [
  "pinner-ecosystem",
  "pinner-toolchain",
  "serde_json",
+ "serde_yaml",
+ "tempfile",
  "walkdir",
 ]
 
@@ -820,6 +824,7 @@ version = "0.1.0"
 dependencies = [
  "pinner-ecosystem",
  "pinner-toolchain",
+ "tempfile",
  "toml",
  "toml_edit",
  "walkdir",

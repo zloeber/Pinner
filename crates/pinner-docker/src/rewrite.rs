@@ -146,7 +146,11 @@ fn unquote(s: &str) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::replace_image_token;
+    use super::{replace_image_token, rewrite_compose, split_image_line};
+    use pinner_ecosystem::{EcosystemKind, EvidenceKind, Pin};
+    use std::fs;
+    use std::path::PathBuf;
+    use tempfile::tempdir;
 
     #[test]
     fn preserves_as_stage_alias() {
@@ -160,5 +164,53 @@ mod tests {
             rewritten,
             "FROM python@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa AS build"
         );
+    }
+
+    #[test]
+    fn split_image_preserves_indent() {
+        let (prefix, value) = split_image_line("    image: alpine:latest").unwrap();
+        assert_eq!(prefix, "    image: ");
+        assert_eq!(value, "alpine:latest");
+    }
+
+    #[test]
+    fn rewrite_compose_handles_nested_indented_images() {
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("compose.yaml");
+        fs::write(
+            &path,
+            "services:\n  app:\n    image: alpine:latest\n  worker:\n    image: \"python:3.12\"\n",
+        )
+        .unwrap();
+        let pins = vec![
+            Pin {
+                ecosystem: EcosystemKind::Docker,
+                name: "alpine".into(),
+                requested: "alpine:latest".into(),
+                pinned: "alpine@sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+                    .into(),
+                path: PathBuf::from("compose.yaml"),
+                evidence: EvidenceKind::Registry,
+                metadata: Default::default(),
+            },
+            Pin {
+                ecosystem: EcosystemKind::Docker,
+                name: "python".into(),
+                requested: "python:3.12".into(),
+                pinned: "python@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+                    .into(),
+                path: PathBuf::from("compose.yaml"),
+                evidence: EvidenceKind::Registry,
+                metadata: Default::default(),
+            },
+        ];
+        let out = rewrite_compose(&path, &pins).unwrap();
+        assert!(out.contains(
+            "    image: alpine@sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+        ));
+        assert!(out.contains(
+            "    image: python@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        ));
+        assert!(!out.contains("alpine:latest"));
     }
 }
