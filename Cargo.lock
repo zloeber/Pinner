@@ -853,6 +853,13 @@ name = "pinner-k8s"
 version = "0.1.0"
 dependencies = [
  "pinner-ecosystem",
+ "pinner-iac-common",
+ "pinner-toolchain",
+ "serde",
+ "serde_json",
+ "serde_yaml",
+ "tempfile",
+ "walkdir",
 ]
 
 [[package]]

@@ -7,3 +7,12 @@ repository.workspace = true
 
 [dependencies]
 pinner-ecosystem = { workspace = true }
+pinner-iac-common = { workspace = true }
+pinner-toolchain = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+serde_yaml = { workspace = true }
+walkdir = { workspace = true }
+
+[dev-dependencies]
+tempfile = { workspace = true }
