@@ -321,6 +321,9 @@ name = "pinner-actions"
 version = "0.1.0"
 dependencies = [
  "pinner-ecosystem",
+ "pinner-toolchain",
+ "serde_json",
+ "walkdir",
 ]
 
 [[package]]
