@@ -53,9 +53,7 @@ fn resolve_one(
         .unwrap_or_else(|| Path::new("."))
         .to_path_buf();
 
-    if let Some(version) =
-        find_cargo_lock_version(ctx.repo, &dir, &finding.name, lock_cache)?
-    {
+    if let Some(version) = find_cargo_lock_version(ctx.repo, &dir, &finding.name, lock_cache)? {
         return Ok(Pin {
             ecosystem: EcosystemKind::Cargo,
             name: finding.name.clone(),
