@@ -926,6 +926,7 @@ dependencies = [
  "tempfile",
  "toml",
  "toml_edit",
+ "walkdir",
 ]
 
 [[package]]
