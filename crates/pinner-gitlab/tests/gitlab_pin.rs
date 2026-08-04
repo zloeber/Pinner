@@ -92,8 +92,7 @@ fn resolve_and_rewrite_via_resolve_maps() {
     );
     assert!(
         pins.iter().any(|p| {
-            p.name == "group/ci-templates"
-                && p.pinned == "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+            p.name == "group/ci-templates" && p.pinned == "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
         }),
         "include pin missing: {pins:?}"
     );
@@ -179,11 +178,7 @@ include:
 "#,
     )
     .unwrap();
-    std::fs::write(
-        tmp.path().join("ci/nested.yml"),
-        "image: alpine:latest\n",
-    )
-    .unwrap();
+    std::fs::write(tmp.path().join("ci/nested.yml"), "image: alpine:latest\n").unwrap();
 
     let eco = GitlabEcosystem;
     let manifests = eco.discover(tmp.path()).unwrap();

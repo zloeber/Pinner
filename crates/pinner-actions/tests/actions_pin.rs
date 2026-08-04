@@ -33,9 +33,9 @@ fn extracts_container_service_and_reusable_workflow() {
     let floating: Vec<_> = findings.iter().filter(|f| f.is_floating).collect();
 
     assert!(
-        floating.iter().any(|f| {
-            f.name == "container:build" && f.requested == "node:20" && f.is_floating
-        }),
+        floating
+            .iter()
+            .any(|f| { f.name == "container:build" && f.requested == "node:20" && f.is_floating }),
         "container finding missing: {findings:?}"
     );
     assert!(
@@ -177,5 +177,7 @@ fn resolve_and_rewrite_images_and_reusable_workflow() {
     );
     assert!(!rw.new_contents.contains("node:20"));
     assert!(!rw.new_contents.contains("redis:latest"));
-    assert!(!rw.new_contents.contains("reuse.yml@v1\n") && !rw.new_contents.ends_with("reuse.yml@v1"));
+    assert!(
+        !rw.new_contents.contains("reuse.yml@v1\n") && !rw.new_contents.ends_with("reuse.yml@v1")
+    );
 }

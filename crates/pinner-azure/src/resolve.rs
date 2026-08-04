@@ -2,9 +2,7 @@ use std::collections::HashMap;
 use std::env;
 
 use pinner_ecosystem::{EcosystemCtx, EcosystemError, EcosystemKind, EvidenceKind, Finding, Pin};
-use pinner_iac_common::{
-    parse_resolve_map, resolve_image_digest, resolve_map_lookup,
-};
+use pinner_iac_common::{parse_resolve_map, resolve_image_digest, resolve_map_lookup};
 use pinner_toolchain::{CommandRunner, RealCommandRunner};
 use serde_json::{Map, Value};
 
@@ -22,13 +20,7 @@ impl AzureEcosystem {
         let azure_map = azure_resolve_map_from_env();
         let mut pins = Vec::with_capacity(findings.len());
         for finding in findings {
-            pins.push(resolve_one(
-                &runner,
-                finding,
-                ctx,
-                &docker_map,
-                &azure_map,
-            )?);
+            pins.push(resolve_one(&runner, finding, ctx, &docker_map, &azure_map)?);
         }
         Ok(pins)
     }
@@ -81,12 +73,7 @@ fn resolve_image(
     }
 
     if let Some(pinned) = resolve_map_lookup(azure_map, &finding.name, &finding.requested) {
-        return Ok(azure_pin(
-            finding,
-            pinned,
-            EvidenceKind::Registry,
-            "image",
-        ));
+        return Ok(azure_pin(finding, pinned, EvidenceKind::Registry, "image"));
     }
 
     if ctx.offline {
@@ -217,10 +204,7 @@ mod tests {
 
     #[test]
     fn normalize_task_pin_accepts_bare_or_full() {
-        assert_eq!(
-            normalize_task_pin("UseNode", "1.2.3"),
-            "UseNode@1.2.3"
-        );
+        assert_eq!(normalize_task_pin("UseNode", "1.2.3"), "UseNode@1.2.3");
         assert_eq!(
             normalize_task_pin("UseNode", "UseNode@1.2.3"),
             "UseNode@1.2.3"

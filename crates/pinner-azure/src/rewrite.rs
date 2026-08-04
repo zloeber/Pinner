@@ -169,7 +169,10 @@ fn split_task_line(line: &str) -> Option<(String, String)> {
     let (after_dash, dash_prefix) = if let Some(rest) = trimmed.strip_prefix('-') {
         let rest = rest.trim_start();
         let dash_ws = trimmed.len() - rest.len();
-        (rest, format!("{}{}", &line[..indent_len], &trimmed[..dash_ws]))
+        (
+            rest,
+            format!("{}{}", &line[..indent_len], &trimmed[..dash_ws]),
+        )
     } else {
         (trimmed, line[..indent_len].to_string())
     };

@@ -166,7 +166,9 @@ pub(crate) fn is_exact_task_version(version: &str) -> bool {
     if parts.len() < 3 {
         return false;
     }
-    parts.iter().all(|p| !p.is_empty() && p.chars().all(|c| c.is_ascii_digit()))
+    parts
+        .iter()
+        .all(|p| !p.is_empty() && p.chars().all(|c| c.is_ascii_digit()))
 }
 
 /// Task findings use `Name@version` without digest.

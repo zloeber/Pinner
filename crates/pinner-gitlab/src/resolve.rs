@@ -141,13 +141,12 @@ fn resolve_include(
     }
 
     let repo_url = format!("https://gitlab.com/{}.git", finding.name);
-    let pinned = resolve_git_sha(runner, &repo_url, ref_).map_err(|hint| {
-        EcosystemError::Resolve {
+    let pinned =
+        resolve_git_sha(runner, &repo_url, ref_).map_err(|hint| EcosystemError::Resolve {
             name: finding.name.clone(),
             requested: finding.requested.clone(),
             hint: format!("{hint}; set PINNER_GITLAB_RESOLVE_MAP (name@requested=sha)"),
-        }
-    })?;
+        })?;
     Ok(gitlab_pin(finding, pinned, EvidenceKind::Tool, "include"))
 }
 

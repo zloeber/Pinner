@@ -124,12 +124,7 @@ fn service_image(svc: &Value) -> Option<String> {
     }
 }
 
-fn push_image_finding(
-    path: &std::path::Path,
-    name: &str,
-    image: &str,
-    out: &mut Vec<Finding>,
-) {
+fn push_image_finding(path: &std::path::Path, name: &str, image: &str, out: &mut Vec<Finding>) {
     out.push(Finding {
         ecosystem: EcosystemKind::Actions,
         name: name.to_string(),
@@ -210,9 +205,7 @@ fn unquote(s: &str) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::{
-        is_floating_image, is_floating_ref, parse_uses_value, split_owner_action_ref,
-    };
+    use super::{is_floating_image, is_floating_ref, parse_uses_value, split_owner_action_ref};
 
     #[test]
     fn parses_uses_lines() {

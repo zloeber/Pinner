@@ -2,9 +2,7 @@ use std::collections::HashMap;
 use std::env;
 
 use pinner_ecosystem::{EcosystemCtx, EcosystemError, EcosystemKind, EvidenceKind, Finding, Pin};
-use pinner_iac_common::{
-    parse_resolve_map, resolve_image_digest, resolve_map_lookup,
-};
+use pinner_iac_common::{parse_resolve_map, resolve_image_digest, resolve_map_lookup};
 use pinner_toolchain::{CommandRunner, RealCommandRunner};
 
 use crate::ActionsEcosystem;

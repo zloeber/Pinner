@@ -156,12 +156,8 @@ mod tests {
     fn floating_ref_detection() {
         assert!(is_floating_ref("main"));
         assert!(is_floating_ref("v1.2.3"));
-        assert!(!is_floating_ref(
-            "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
-        ));
-        assert!(is_full_git_sha(
-            "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
-        ));
+        assert!(!is_floating_ref("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"));
+        assert!(is_full_git_sha("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"));
     }
 
     #[test]

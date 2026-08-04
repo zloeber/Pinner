@@ -41,7 +41,8 @@ fn is_azure_pipeline_file(path: &Path) -> bool {
     if name.starts_with("azure-pipelines") {
         return true;
     }
-    path.components().any(|c| c.as_os_str() == ".azure-pipelines")
+    path.components()
+        .any(|c| c.as_os_str() == ".azure-pipelines")
 }
 
 fn should_skip(path: &Path) -> bool {
@@ -59,9 +60,7 @@ mod tests {
     #[test]
     fn recognizes_pipeline_filenames() {
         assert!(is_azure_pipeline_file(Path::new("azure-pipelines.yml")));
-        assert!(is_azure_pipeline_file(Path::new(
-            "azure-pipelines-ci.yaml"
-        )));
+        assert!(is_azure_pipeline_file(Path::new("azure-pipelines-ci.yaml")));
         assert!(is_azure_pipeline_file(Path::new(
             ".azure-pipelines/build.yml"
         )));

@@ -345,8 +345,7 @@ fn resolve_and_rewrite_via_env_map() {
 #[test]
 fn rewrite_registry_repository_tag_keeps_fields_separate() {
     let _guard = env_lock().lock().unwrap();
-    let digest =
-        "sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd";
+    let digest = "sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd";
     let pinned = format!("docker.io/bitnami/nginx@{digest}");
     unsafe {
         std::env::set_var(

@@ -52,11 +52,15 @@ fn extracts_floating_image_and_major_task() {
         "floating major-only task missing: {findings:?}"
     );
     assert!(
-        !findings.iter().any(|f| f.requested == "build" || f.name == "build"),
+        !findings
+            .iter()
+            .any(|f| f.requested == "build" || f.name == "build"),
         "container alias must not be an image finding: {findings:?}"
     );
     assert!(
-        !findings.iter().any(|f| f.requested.contains("ubuntu-latest")),
+        !findings
+            .iter()
+            .any(|f| f.requested.contains("ubuntu-latest")),
         "vmImage must not be extracted: {findings:?}"
     );
 }

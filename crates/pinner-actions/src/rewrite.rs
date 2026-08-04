@@ -210,8 +210,7 @@ mod tests {
     fn rewrites_reusable_workflow_uses() {
         let pin = reusable_pin();
         let line = "      - uses: org/repo/.github/workflows/reuse.yml@v1";
-        let rewritten =
-            replace_uses_line(line, "org/repo/.github/workflows/reuse.yml@v1", &pin);
+        let rewritten = replace_uses_line(line, "org/repo/.github/workflows/reuse.yml@v1", &pin);
         assert_eq!(
             rewritten,
             "      - uses: org/repo/.github/workflows/reuse.yml@cccccccccccccccccccccccccccccccccccccccc # v1"
