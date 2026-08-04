@@ -11,7 +11,7 @@ pub enum Format {
 #[derive(Debug, Parser)]
 #[command(
     name = "pinner",
-    version,
+    version = env!("PINNER_VERSION"),
     about = "Pin floating dependency versions across ecosystems"
 )]
 pub struct Cli {

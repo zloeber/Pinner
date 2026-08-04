@@ -1,7 +1,9 @@
 name: release
 
-# Tag-driven semantic releases: push a git tag matching vMAJOR.MINOR.PATCH
-# (e.g. v0.2.0). The tag version must match [workspace.package].version in Cargo.toml.
+# Tag-driven semantic releases: push (or semantic-release creates) a git tag
+# matching vMAJOR.MINOR.PATCH (e.g. v0.2.0). The release job rewrites
+# Cargo.toml workspace version from the tag before building so the CLI and
+# package metadata match without a manual pre-bump.
 on:
   push:
     tags:
@@ -29,6 +31,8 @@ jobs:
       tag: ${{ steps.version.outputs.tag }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Resolve version from tag or Cargo.toml
         id: version
@@ -39,11 +43,7 @@ jobs:
           if [[ "${GITHUB_REF_TYPE:-}" == "tag" ]]; then
             tag="${GITHUB_REF_NAME}"
             version="${tag#v}"
-            if [[ "$version" != "$cargo_version" ]]; then
-              echo "::error::Tag $tag does not match Cargo.toml workspace version $cargo_version"
-              echo "Bump [workspace.package].version in Cargo.toml before tagging."
-              exit 1
-            fi
+            echo "::notice::Tag-first release: $tag → version $version (Cargo.toml was $cargo_version)"
           else
             version="$cargo_version"
             tag="v${version}"
@@ -80,6 +80,29 @@ jobs:
             archive: zip
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Align Cargo.toml workspace version with release tag
+        shell: bash
+        run: |
+          set -euo pipefail
+          version="${{ needs.meta.outputs.version }}"
+          # Rewrite only the workspace.package version line.
+          python3 - "$version" <<'PY'
+          import pathlib, re, sys
+          version = sys.argv[1]
+          path = pathlib.Path("Cargo.toml")
+          text = path.read_text(encoding="utf-8")
+          pattern = re.compile(
+              r"(?ms)(^\[workspace\.package\].*?^version\s*=\s*)\"[^\"]*\"",
+          )
+          new_text, n = pattern.subn(rf'\1"{version}"', text, count=1)
+          if n != 1:
+              raise SystemExit("failed to rewrite [workspace.package].version in Cargo.toml")
+          path.write_text(new_text, encoding="utf-8")
+          print(f"Set [workspace.package].version = \"{version}\"")
+          PY
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable

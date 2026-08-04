@@ -209,19 +209,21 @@ Fixture matrix under `tests/fixtures/*-floating` covers mise, node, python, dock
 |----------|---------|---------|
 | [`ci.yml`](.github/workflows/ci.yml) | push / PR | **lint** (`fmt` + `clippy -D warnings`) and **test** (workspace + schema) |
 | [`docs.yml`](.github/workflows/docs.yml) | push to `main` (docs paths) | Build mdBook and deploy [GitHub Pages](https://zloeber.github.io/Pinner/) |
+| [`semantic-release.yml`](.github/workflows/semantic-release.yml) | push to `main` | Conventional commits → annotated tag `vX.Y.Z` (needs `PAT_TOKEN`) |
 | [`release.yml`](.github/workflows/release.yml) | tag `v*.*.*` | Multi-platform release binaries + GitHub Release |
 
-### Cutting a release (tag = semver)
+### Cutting a release
 
-1. Bump `[workspace.package].version` in `Cargo.toml` (must match the tag without the leading `v`).
-2. Commit, then tag and push:
+**Automated (preferred):** merge conventional commits to `main` (`feat:`, `fix:`, `feat!:` / `BREAKING CHANGE`). Semantic-release tags `vX.Y.Z`; the release workflow builds binaries. Seed `PAT_TOKEN` once via [`Secretfile.yml`](Secretfile.yml) / SecretZero (see [releasing guide](docs/guide/releasing.md)).
+
+**Manual:**
 
 ```bash
 git tag -a v0.2.0 -m "v0.2.0"
 git push origin v0.2.0
 ```
 
-The release workflow verifies the tag matches Cargo.toml, builds for Linux (x86_64 + aarch64), macOS (Intel + Apple Silicon), and Windows (x86_64), and attaches archives to the GitHub Release. Details: [docs/guide/releasing.md](docs/guide/releasing.md).
+No Cargo.toml pre-bump required—the release job aligns workspace version from the tag. `pinner --version` prefers the latest `v*` git tag. Details: [docs/guide/releasing.md](docs/guide/releasing.md).
 
 ### GitHub Pages setup (one-time)
 
