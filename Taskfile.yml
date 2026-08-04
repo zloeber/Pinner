@@ -1,13 +1,64 @@
-version: "3"
+# yaml-language-server: $schema=https://taskfile.dev/schema.json
 
-vars:
+version: "3"
+silent: true
+env:
+  PROJECT:
+    sh: 'echo "$(basename $(pwd))"'
+  LOCAL_BIN_PATH:
+    sh: 'echo "{{.ROOT_DIR}}/.venv/bin"'
+  BUILD_DATE:
+    sh: "date '+%Y-%m-%d-%H:%M:%S'"
+  BUILD_DATE_SHORT:
+    sh: "date '+%Y-%m-%d-%H%M%S'"
+  GIT_LATEST_TAG:
+    sh: 'git tag -l 2>/dev/null | sort -r -V | head -n 1 2>/dev/null || echo "not a git repo"'
+  TERM: screen-256color
+  DOCS_PATH: "{{.ROOT_DIR}}/docs"
+  PYTHON_VENV_PATH: "{{.ROOT_DIR}}/.venv"
+  SCRIPT_PATH: "{{.ROOT_DIR}}/scripts"
+  VERSION: '{{default "unknown" .GIT_LATEST_TAG}}'
+  COMPOSE_BAKE: true
   CARGO_FLAGS: --locked
+
+dotenv:
+  - ".env"
+  - ".SECRETS.env"
+
+includes:
+  docker:
+    taskfile: ./tasks/Taskfile.docker.yml
+    optional: true
+  github:
+    taskfile: ./tasks/Taskfile.github.yml
+    optional: true
+  python:
+    taskfile: ./tasks/Taskfile.python.yml
+    optional: true
+  mcp:
+    taskfile: ./tasks/Taskfile.mcp.yml
+    optional: true
 
 tasks:
   default:
     desc: List available tasks
     cmds:
       - task --list
+
+  show:
+    desc: Show task variables
+    cmds:
+      - |
+        echo "ROOT_PATH: {{.ROOT_DIR}}"
+        echo "PROJECT: {{.PROJECT}}"
+        echo "VERSION: {{.VERSION}}"
+        echo "OS: {{OS}}"
+        echo "ARCH: {{ARCH}}"
+        echo "LOCAL_BIN_PATH: {{.LOCAL_BIN_PATH}}"
+        echo "PYTHON_VENV_PATH: {{.PYTHON_VENV_PATH}}"
+        echo "SCRIPT_PATH: {{.SCRIPT_PATH}}"
+        echo "BUILD_DATE: {{.BUILD_DATE}}"
+        echo "GIT_LATEST_TAG: {{.GIT_LATEST_TAG}}"
 
   setup:
     desc: Trust mise config and install pinned toolchain binaries
