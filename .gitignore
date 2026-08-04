@@ -7,3 +7,8 @@ docs/README.md
 mise.local.toml
 .task/
 .superpowers/
+.env
+.env.*
+.gitsecrets.lock
+.szvar
+*.szvar

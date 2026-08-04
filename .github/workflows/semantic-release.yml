@@ -1,0 +1,131 @@
+name: Semantic Release
+run-name: Semantic Release - ${{ github.ref_name }}
+
+# Conventional commits on main → annotated tag vX.Y.Z (PAT required so the
+# tag push can trigger release.yml). Does not create a GitHub Release; that
+# is owned by release.yml.
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  semantic-release:
+    name: Generate Semantic Release Tag
+    runs-on: ubuntu-latest
+    environment:
+      name: production
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.PAT_TOKEN }}
+
+      - name: Set up Git
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Get previous tag
+        id: prev_tag
+        run: |
+          set -euo pipefail
+          PREV_TAG=$(git describe --tags --match 'v*' --abbrev=0 2>/dev/null || echo "v0.0.0")
+          echo "tag=$PREV_TAG" >> "$GITHUB_OUTPUT"
+          echo "Previous tag: $PREV_TAG"
+
+      - name: Parse commits and determine version bump
+        id: version
+        run: |
+          set -euo pipefail
+          PREV_TAG="${{ steps.prev_tag.outputs.tag }}"
+          PREV_VERSION="${PREV_TAG#v}"
+
+          if git rev-parse "$PREV_TAG" >/dev/null 2>&1 && [[ "$PREV_TAG" != "v0.0.0" ]]; then
+            COMMITS=$(git log "${PREV_TAG}..HEAD" --pretty=format:%s)
+          else
+            COMMITS=$(git log --pretty=format:%s)
+          fi
+
+          echo "Commits since last release:"
+          echo "$COMMITS"
+
+          MAJOR_BUMP=0
+          MINOR_BUMP=0
+          PATCH_BUMP=0
+
+          if echo "$COMMITS" | grep -qE 'BREAKING CHANGE|^feat!:'; then
+            MAJOR_BUMP=1
+          elif echo "$COMMITS" | grep -qE '^feat(\(.+\))?:'; then
+            MINOR_BUMP=1
+          elif echo "$COMMITS" | grep -qE '^(fix|refactor|perf)(\(.+\))?:'; then
+            PATCH_BUMP=1
+          fi
+
+          if [[ "$MAJOR_BUMP" -eq 0 && "$MINOR_BUMP" -eq 0 && "$PATCH_BUMP" -eq 0 ]]; then
+            echo "should_release=false" >> "$GITHUB_OUTPUT"
+            echo "new_version=" >> "$GITHUB_OUTPUT"
+            echo "No releasable conventional commits (feat/fix/refactor/perf/BREAKING); skipping tag."
+            exit 0
+          fi
+
+          IFS='.' read -r MAJOR MINOR PATCH <<< "$PREV_VERSION"
+          MAJOR=${MAJOR:-0}
+          MINOR=${MINOR:-0}
+          PATCH=${PATCH:-0}
+
+          if [[ "$MAJOR_BUMP" -eq 1 ]]; then
+            MAJOR=$((MAJOR + 1))
+            MINOR=0
+            PATCH=0
+          elif [[ "$MINOR_BUMP" -eq 1 ]]; then
+            MINOR=$((MINOR + 1))
+            PATCH=0
+          else
+            PATCH=$((PATCH + 1))
+          fi
+
+          NEW_VERSION="${MAJOR}.${MINOR}.${PATCH}"
+          echo "should_release=true" >> "$GITHUB_OUTPUT"
+          echo "new_version=$NEW_VERSION" >> "$GITHUB_OUTPUT"
+          echo "New version: $NEW_VERSION"
+
+      - name: Check if tag already exists
+        id: check_tag
+        if: steps.version.outputs.should_release == 'true'
+        run: |
+          set -euo pipefail
+          TAG="v${{ steps.version.outputs.new_version }}"
+          if git rev-parse "$TAG" >/dev/null 2>&1; then
+            echo "tag_exists=true" >> "$GITHUB_OUTPUT"
+            echo "Tag $TAG already exists"
+          else
+            echo "tag_exists=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Create and push tag
+        if: >-
+          steps.version.outputs.should_release == 'true' &&
+          steps.check_tag.outputs.tag_exists == 'false'
+        run: |
+          set -euo pipefail
+          TAG="v${{ steps.version.outputs.new_version }}"
+          git tag -a "$TAG" -m "Release $TAG"
+          git push origin "$TAG"
+          echo "Created and pushed tag: $TAG"
+
+      - name: Log output
+        run: |
+          echo "Previous tag: ${{ steps.prev_tag.outputs.tag }}"
+          echo "Should release: ${{ steps.version.outputs.should_release }}"
+          echo "New version: ${{ steps.version.outputs.new_version }}"
+          echo "Tag exists: ${{ steps.check_tag.outputs.tag_exists }}"
