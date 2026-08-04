@@ -16,9 +16,9 @@ Pinner uses **tag-driven semantic versions**. A GitHub Release (with multi-platf
 
 ### One-time: seed `PAT_TOKEN` with SecretZero
 
-Semantic-release needs a classic PAT with `contents:write` so the tag push can trigger `release.yml` (the default `GITHUB_TOKEN` often cannot chain workflows).
+Semantic-release checks out with `GITHUB_TOKEN`, then uses a classic PAT only for the tag push so `release.yml` can chain (default `GITHUB_TOKEN` pushes do not trigger other workflows).
 
-1. Create a classic PAT with repo contents write access for `zloeber/Pinner`.
+1. Create a **classic** PAT (`ghp_…`) with `repo` / contents write for `zloeber/Pinner`. Fine-grained tokens work only if they have Contents: Read and Write on this repo.
 2. From the repo root, sync via SecretZero using [`Secretfile.yml`](../../Secretfile.yml) (maps `release_token` → Actions secret `PAT_TOKEN`):
 
 ```bash
@@ -29,9 +29,11 @@ secretzero agent sync --web
 # or: secretzero web
 ```
 
-3. Bind the `production` GitHub Actions environment (used by semantic-release) so it can read `PAT_TOKEN`, or store `PAT_TOKEN` as a repository secret.
+3. Store `PAT_TOKEN` as a **repository** secret (SecretZero does this). The semantic-release job uses the `production` environment; repository secrets remain available there. Optionally add the same secret as an environment secret if you prefer environment-scoped credentials.
 
 Never commit PAT values.
+
+If semantic-release fails on “Failed to push tag with PAT_TOKEN”, the secret exists but the token value is expired, revoked, or missing write scope — create a new classic PAT and re-run `secretzero agent sync --web`.
 
 ## Manual tag (still supported)
 

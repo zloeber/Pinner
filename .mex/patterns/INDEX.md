@@ -23,3 +23,4 @@ Lookup table for all pattern files in this directory. Check here before starting
 
 | Pattern | Use when |
 |---------|----------|
+| [fix-github-actions-node24.md](fix-github-actions-node24.md) | Node 20 Actions deprecation warnings or semantic-release PAT checkout auth failures |

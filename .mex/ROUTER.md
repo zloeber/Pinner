@@ -24,21 +24,18 @@ If you haven't already read `AGENTS.md`, read it now — it contains the project
 Then read this file fully before doing anything else in this session.
 
 ## Current Project State
-<!-- What is working. What is not yet built. Known issues.
-     Update this section whenever significant work is completed.
-     This is the primary drift prevention mechanism — it re-grounds the agent every session.
-     Length: 3 sections (Working / Not Built / Known Issues), 3-7 items each.
-     Example:
-     **Working:**
-     - User authentication and session management
-     - Core CRUD operations for all main entities
 
-     **Not yet built:**
-     - Email notification system
-     - Admin dashboard
+**Working:**
+- Multi-ecosystem pin/check/audit CLI with fixtures and local CI (`scripts/ci-local`)
+- Tag-driven releases (`semantic-release.yml` → `release.yml`) and mdBook docs Pages deploy
+- Workflows use Node 24 action majors (`checkout@v5`, `mise-action@v4`, artifact/pages v5–v7)
 
-     **Known issues:**
-     - Pagination breaks on filtered queries with more than 1000 results -->
+**Not yet built:**
+- Full `.mex/` pattern library (index still scaffold-level)
+
+**Known issues:**
+- Semantic-release tag push requires a valid classic `PAT_TOKEN` (repo secret); expired/wrong-scope PATs fail at push, not checkout
+
 
 ## Routing Table
 
