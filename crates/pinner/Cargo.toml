@@ -13,15 +13,20 @@ path = "src/main.rs"
 clap = { workspace = true }
 serde_json = { workspace = true }
 pinner-actions = { workspace = true }
+pinner-azure = { workspace = true }
+pinner-cargo = { workspace = true }
 pinner-core = { workspace = true }
 pinner-docker = { workspace = true }
 pinner-ecosystem = { workspace = true }
+pinner-gitlab = { workspace = true }
+pinner-go = { workspace = true }
 pinner-helm = { workspace = true }
 pinner-k8s = { workspace = true }
 pinner-terraform = { workspace = true }
 pinner-mise = { workspace = true }
 pinner-node = { workspace = true }
 pinner-python = { workspace = true }
+pinner-ruby = { workspace = true }
 pinner-toolchain = { workspace = true }
 
 [dev-dependencies]
