@@ -109,6 +109,15 @@ jobs:
         with:
           targets: ${{ matrix.target }}
 
+      # Tag-first releases rewrite [workspace.package].version in Cargo.toml.
+      # Path packages in Cargo.lock still carry the old version, so --locked
+      # fails until we refresh workspace members (deps stay pinned).
+      - name: Sync Cargo.lock with rewritten workspace versions
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo update -w
+
       - name: Build release binary
         shell: bash
         run: |

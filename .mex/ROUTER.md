@@ -36,6 +36,7 @@ Then read this file fully before doing anything else in this session.
 **Known issues:**
 - Semantic-release tag push requires a valid classic `PAT_TOKEN` (repo secret); expired/wrong-scope PATs fail at push, not checkout
 - Fixed 2026-08-04: checkout’s persisted `GITHUB_TOKEN` `http.extraheader` was overriding the PAT URL, so tags pushed without triggering `release.yml` (e.g. stuck `v0.2.0`) — see `.mex/patterns/fix-semantic-release-chain.md`
+- Fixed 2026-08-04: tag-first `release.yml` rewrote Cargo.toml version then `cargo build --locked` failed until `cargo update -w` syncs path-package versions in Cargo.lock
 
 
 ## Routing Table
