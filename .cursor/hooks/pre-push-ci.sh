@@ -15,7 +15,7 @@ if [[ -z "$cmd" ]]; then
   exit 0
 fi
 
-if [[ ! "$cmd" =~ (^|[[:space:];|&])git[[:space:]]+push([[:space:]]|$) ]]; then
+if [[ ! "$cmd" =~ '(^|[[:space:];|&])git[[:space:]]+push([[:space:]]|$)' ]]; then
   print -r -- '{"permission":"allow"}'
   exit 0
 fi
