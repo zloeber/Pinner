@@ -53,7 +53,7 @@ fn resolve_one(
         .unwrap_or_else(|| Path::new("."))
         .to_path_buf();
 
-    if let Some(version) = find_go_sum_version(&dir, &finding.name, sum_cache)? {
+    if let Some(version) = find_go_sum_version(ctx.repo, &dir, &finding.name, sum_cache)? {
         return Ok(Pin {
             ecosystem: EcosystemKind::Go,
             name: finding.name.clone(),
@@ -95,6 +95,7 @@ fn resolve_one(
 }
 
 fn find_go_sum_version(
+    repo: &Path,
     start: &Path,
     name: &str,
     sum_cache: &mut HashMap<PathBuf, Option<HashMap<String, String>>>,
@@ -109,6 +110,9 @@ fn find_go_sum_version(
             && let Some(version) = versions.get(name)
         {
             return Ok(Some(version.clone()));
+        }
+        if current == repo {
+            break;
         }
         if !current.pop() {
             break;
@@ -185,8 +189,10 @@ fn parse_go_resolve_map(raw: &str) -> HashMap<(String, String), String> {
 
 #[cfg(test)]
 mod tests {
-    use super::{parse_go_resolve_map, read_go_sum_versions};
+    use super::{find_go_sum_version, parse_go_resolve_map, read_go_sum_versions};
+    use std::collections::HashMap;
     use std::fs;
+    use std::path::PathBuf;
     use tempfile::tempdir;
 
     #[test]
@@ -212,6 +218,50 @@ mod tests {
         assert_eq!(
             map.get("github.com/example/lib").map(String::as_str),
             Some("v1.2.3")
+        );
+    }
+
+    #[test]
+    fn find_go_sum_ignores_parent_outside_repo() {
+        let outer = tempdir().unwrap();
+        let repo = outer.path().join("repo");
+        let sub = repo.join("sub");
+        fs::create_dir_all(&sub).unwrap();
+        fs::write(
+            outer.path().join("go.sum"),
+            "github.com/example/lib v9.9.9 h1:parent=\n",
+        )
+        .unwrap();
+        fs::write(
+            repo.join("go.sum"),
+            "github.com/example/lib v1.2.3 h1:repo=\n",
+        )
+        .unwrap();
+
+        let mut cache = HashMap::<PathBuf, _>::new();
+        let version = find_go_sum_version(&repo, &sub, "github.com/example/lib", &mut cache)
+            .unwrap()
+            .unwrap();
+        assert_eq!(version, "v1.2.3");
+    }
+
+    #[test]
+    fn find_go_sum_stops_at_repo_root_without_sum() {
+        let outer = tempdir().unwrap();
+        let repo = outer.path().join("repo");
+        let sub = repo.join("sub");
+        fs::create_dir_all(&sub).unwrap();
+        fs::write(
+            outer.path().join("go.sum"),
+            "github.com/example/lib v9.9.9 h1:parent=\n",
+        )
+        .unwrap();
+
+        let mut cache = HashMap::<PathBuf, _>::new();
+        assert!(
+            find_go_sum_version(&repo, &sub, "github.com/example/lib", &mut cache)
+                .unwrap()
+                .is_none()
         );
     }
 }

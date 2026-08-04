@@ -115,3 +115,46 @@ serde = "1"
     assert_eq!(pins[0].pinned, "1.0.210");
     assert_eq!(pins[0].evidence, EvidenceKind::Registry);
 }
+
+#[test]
+fn ignores_parent_cargo_lock_outside_repo() {
+    unsafe {
+        std::env::remove_var("PINNER_CARGO_RESOLVE_MAP");
+    }
+    let outer = tempdir().unwrap();
+    let repo = outer.path().join("repo");
+    fs::create_dir_all(&repo).unwrap();
+    fs::write(
+        outer.path().join("Cargo.lock"),
+        "version = 3\n\n[[package]]\nname = \"serde\"\nversion = \"9.9.9\"\n",
+    )
+    .unwrap();
+    fs::write(
+        repo.join("Cargo.toml"),
+        r#"[package]
+name = "demo"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+serde = "1"
+"#,
+    )
+    .unwrap();
+
+    let eco = CargoEcosystem;
+    let ctx = EcosystemCtx {
+        repo: &repo,
+        lock_pins: &[],
+        offline: true,
+        pin_exact_ranges: true,
+    };
+    let manifests = eco.discover(&repo).unwrap();
+    let findings = eco.extract(&manifests[0], &ctx).unwrap();
+    let err = eco.resolve(&findings, &ctx).unwrap_err();
+    assert!(matches!(
+        err,
+        pinner_ecosystem::EcosystemError::Offline { .. }
+            | pinner_ecosystem::EcosystemError::Resolve { .. }
+    ));
+}

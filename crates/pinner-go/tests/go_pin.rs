@@ -115,6 +115,42 @@ fn resolves_from_pinner_go_resolve_map() {
 }
 
 #[test]
+fn ignores_parent_go_sum_outside_repo() {
+    unsafe {
+        std::env::remove_var("PINNER_GO_RESOLVE_MAP");
+    }
+    let outer = tempdir().unwrap();
+    let repo = outer.path().join("repo");
+    fs::create_dir_all(&repo).unwrap();
+    fs::write(
+        outer.path().join("go.sum"),
+        "github.com/example/lib v9.9.9 h1:parent=\n",
+    )
+    .unwrap();
+    fs::write(
+        repo.join("go.mod"),
+        "module example.com/demo\n\ngo 1.22\n\nrequire github.com/example/lib latest\n",
+    )
+    .unwrap();
+
+    let eco = GoEcosystem;
+    let ctx = EcosystemCtx {
+        repo: &repo,
+        lock_pins: &[],
+        offline: true,
+        pin_exact_ranges: true,
+    };
+    let manifests = eco.discover(&repo).unwrap();
+    let findings = eco.extract(&manifests[0], &ctx).unwrap();
+    let err = eco.resolve(&findings, &ctx).unwrap_err();
+    assert!(matches!(
+        err,
+        pinner_ecosystem::EcosystemError::Offline { .. }
+            | pinner_ecosystem::EcosystemError::Resolve { .. }
+    ));
+}
+
+#[test]
 fn discovers_go_work_modules() {
     let dir = tempdir().unwrap();
     fs::write(

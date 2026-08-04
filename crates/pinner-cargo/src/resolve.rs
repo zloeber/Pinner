@@ -53,7 +53,9 @@ fn resolve_one(
         .unwrap_or_else(|| Path::new("."))
         .to_path_buf();
 
-    if let Some(version) = find_cargo_lock_version(&dir, &finding.name, lock_cache)? {
+    if let Some(version) =
+        find_cargo_lock_version(ctx.repo, &dir, &finding.name, lock_cache)?
+    {
         return Ok(Pin {
             ecosystem: EcosystemKind::Cargo,
             name: finding.name.clone(),
@@ -95,6 +97,7 @@ fn resolve_one(
 }
 
 fn find_cargo_lock_version(
+    repo: &Path,
     start: &Path,
     name: &str,
     lock_cache: &mut HashMap<PathBuf, Option<HashMap<String, String>>>,
@@ -109,6 +112,9 @@ fn find_cargo_lock_version(
             && let Some(version) = versions.get(name)
         {
             return Ok(Some(version.clone()));
+        }
+        if current == repo {
+            break;
         }
         if !current.pop() {
             break;
@@ -188,8 +194,10 @@ fn parse_cargo_resolve_map(raw: &str) -> HashMap<(String, String), String> {
 
 #[cfg(test)]
 mod tests {
-    use super::{parse_cargo_resolve_map, read_cargo_lock_versions};
+    use super::{find_cargo_lock_version, parse_cargo_resolve_map, read_cargo_lock_versions};
+    use std::collections::HashMap;
     use std::fs;
+    use std::path::PathBuf;
     use tempfile::tempdir;
 
     #[test]
@@ -216,5 +224,49 @@ mod tests {
         .unwrap();
         let map = read_cargo_lock_versions(&path).unwrap().unwrap();
         assert_eq!(map.get("serde").map(String::as_str), Some("1.0.210"));
+    }
+
+    #[test]
+    fn find_cargo_lock_ignores_parent_outside_repo() {
+        let outer = tempdir().unwrap();
+        let repo = outer.path().join("repo");
+        let sub = repo.join("sub");
+        fs::create_dir_all(&sub).unwrap();
+        fs::write(
+            outer.path().join("Cargo.lock"),
+            "version = 3\n\n[[package]]\nname = \"serde\"\nversion = \"9.9.9\"\n",
+        )
+        .unwrap();
+        fs::write(
+            repo.join("Cargo.lock"),
+            "version = 3\n\n[[package]]\nname = \"serde\"\nversion = \"1.0.210\"\n",
+        )
+        .unwrap();
+
+        let mut cache = HashMap::<PathBuf, _>::new();
+        let version = find_cargo_lock_version(&repo, &sub, "serde", &mut cache)
+            .unwrap()
+            .unwrap();
+        assert_eq!(version, "1.0.210");
+    }
+
+    #[test]
+    fn find_cargo_lock_stops_at_repo_root_without_lock() {
+        let outer = tempdir().unwrap();
+        let repo = outer.path().join("repo");
+        let sub = repo.join("sub");
+        fs::create_dir_all(&sub).unwrap();
+        fs::write(
+            outer.path().join("Cargo.lock"),
+            "version = 3\n\n[[package]]\nname = \"serde\"\nversion = \"9.9.9\"\n",
+        )
+        .unwrap();
+
+        let mut cache = HashMap::<PathBuf, _>::new();
+        assert!(
+            find_cargo_lock_version(&repo, &sub, "serde", &mut cache)
+                .unwrap()
+                .is_none()
+        );
     }
 }
