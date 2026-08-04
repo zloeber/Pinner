@@ -4,7 +4,7 @@ use std::path::Path;
 use pinner_ecosystem::{EcosystemError, Manifest, Pin, Rewrite};
 use serde_yaml::Value;
 
-use crate::extract::{include_ref, is_include_finding};
+use crate::extract::{include_ref, include_ref_for_rewrite, is_include_finding};
 
 pub(crate) fn rewrite(
     manifest: &Manifest,
@@ -144,7 +144,10 @@ fn rewrite_include_refs(
         .iter()
         .filter_map(|p| {
             let ref_ = include_ref(&p.requested)?;
-            Some(((p.name.as_str(), ref_), p.pinned.as_str()))
+            Some((
+                (p.name.as_str(), ref_),
+                include_ref_for_rewrite(&p.name, &p.pinned),
+            ))
         })
         .collect();
 
@@ -205,9 +208,14 @@ fn rewrite_include_refs_yaml(
         message: e.to_string(),
     })?;
 
-    let by_requested: HashMap<&str, &str> = pins
+    let by_requested: HashMap<&str, (&str, &str)> = pins
         .iter()
-        .map(|p| (p.requested.as_str(), p.pinned.as_str()))
+        .map(|p| {
+            (
+                p.requested.as_str(),
+                (p.name.as_str(), include_ref_for_rewrite(&p.name, &p.pinned)),
+            )
+        })
         .collect();
 
     let mut changed = false;
@@ -227,7 +235,7 @@ fn rewrite_include_refs_yaml(
     })
 }
 
-fn rewrite_include_value(include: &mut Value, by_requested: &HashMap<&str, &str>) -> bool {
+fn rewrite_include_value(include: &mut Value, by_requested: &HashMap<&str, (&str, &str)>) -> bool {
     match include {
         Value::Sequence(items) => {
             let mut changed = false;
@@ -240,7 +248,7 @@ fn rewrite_include_value(include: &mut Value, by_requested: &HashMap<&str, &str>
     }
 }
 
-fn rewrite_include_item(item: &mut Value, by_requested: &HashMap<&str, &str>) -> bool {
+fn rewrite_include_item(item: &mut Value, by_requested: &HashMap<&str, (&str, &str)>) -> bool {
     let Some(map) = item.as_mapping_mut() else {
         return false;
     };
@@ -257,12 +265,12 @@ fn rewrite_include_item(item: &mut Value, by_requested: &HashMap<&str, &str>) ->
         .unwrap_or("main")
         .to_string();
     let requested = format!("{project}@{ref_}");
-    let Some(pinned) = by_requested.get(requested.as_str()) else {
+    let Some((_name, pinned_ref)) = by_requested.get(requested.as_str()) else {
         return false;
     };
     map.insert(
         Value::String("ref".into()),
-        Value::String((*pinned).to_string()),
+        Value::String((*pinned_ref).to_string()),
     );
     true
 }

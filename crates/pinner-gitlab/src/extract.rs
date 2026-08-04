@@ -137,9 +137,21 @@ pub(crate) fn include_ref(requested: &str) -> Option<&str> {
     requested.rsplit_once('@').map(|(_, r)| r)
 }
 
+/// SHA (or other ref) to write into YAML `ref:` from a pin value that may be bare or
+/// `project@ref` (lock/check form).
+pub(crate) fn include_ref_for_rewrite<'a>(project: &str, pinned: &'a str) -> &'a str {
+    let prefix = format!("{project}@");
+    pinned
+        .strip_prefix(prefix.as_str())
+        .unwrap_or_else(|| include_ref(pinned).unwrap_or(pinned))
+}
+
 #[cfg(test)]
 mod tests {
-    use super::{is_floating_image, is_floating_ref, is_full_git_sha, is_include_finding};
+    use super::{
+        include_ref_for_rewrite, is_floating_image, is_floating_ref, is_full_git_sha,
+        is_include_finding,
+    };
     use pinner_ecosystem::{EcosystemKind, Finding};
     use std::path::PathBuf;
 
@@ -190,5 +202,23 @@ mod tests {
             is_floating: false,
         };
         assert!(!is_include_finding(&digest));
+    }
+
+    #[test]
+    fn include_ref_for_rewrite_strips_project_prefix() {
+        assert_eq!(
+            include_ref_for_rewrite(
+                "group/ci-templates",
+                "group/ci-templates@bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+            ),
+            "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+        );
+        assert_eq!(
+            include_ref_for_rewrite(
+                "group/ci-templates",
+                "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+            ),
+            "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+        );
     }
 }

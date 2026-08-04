@@ -118,7 +118,7 @@ fn resolve_include(
     if let Some(pinned) = resolve_map_lookup(gitlab_map, &finding.name, &finding.requested) {
         return Ok(gitlab_pin(
             finding,
-            pinned,
+            include_pin_value(&finding.name, &pinned),
             EvidenceKind::Registry,
             "include",
         ));
@@ -127,7 +127,7 @@ fn resolve_include(
     if let Some(pinned) = gitlab_map.get(&finding.requested) {
         return Ok(gitlab_pin(
             finding,
-            pinned.clone(),
+            include_pin_value(&finding.name, pinned),
             EvidenceKind::Registry,
             "include",
         ));
@@ -147,7 +147,23 @@ fn resolve_include(
             requested: finding.requested.clone(),
             hint: format!("{hint}; set PINNER_GITLAB_RESOLVE_MAP (name@requested=sha)"),
         })?;
-    Ok(gitlab_pin(finding, pinned, EvidenceKind::Tool, "include"))
+    Ok(gitlab_pin(
+        finding,
+        include_pin_value(&finding.name, &pinned),
+        EvidenceKind::Tool,
+        "include",
+    ))
+}
+
+/// Lock/check form matches extract: `project@sha` (rewrite writes only the SHA to `ref:`).
+fn include_pin_value(project: &str, pinned: &str) -> String {
+    let pinned = pinned.trim();
+    let prefix = format!("{project}@");
+    if pinned.starts_with(&prefix) {
+        pinned.to_string()
+    } else {
+        format!("{prefix}{pinned}")
+    }
 }
 
 fn gitlab_pin(finding: &Finding, pinned: String, evidence: EvidenceKind, kind: &str) -> Pin {

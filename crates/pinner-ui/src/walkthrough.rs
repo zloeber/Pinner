@@ -270,18 +270,6 @@ fn draw(frame: &mut Frame, app: &App) {
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use pinner_core::WalkthroughOutcome;
-
-    #[test]
-    fn empty_pins_continue_without_tui() {
-        let outcome = run_compact_walkthrough(&[]).unwrap();
-        assert_eq!(outcome, WalkthroughOutcome::Continue { pins: vec![] });
-    }
-}
-
 fn centered_rect(percent_x: u16, height: u16, area: Rect) -> Rect {
     let top = area.height.saturating_sub(height) / 2;
     let vertical = Layout::vertical([
@@ -296,4 +284,16 @@ fn centered_rect(percent_x: u16, height: u16, area: Rect) -> Rect {
         Constraint::Percentage((100 - percent_x) / 2),
     ])
     .split(vertical[1])[1]
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use pinner_core::WalkthroughOutcome;
+
+    #[test]
+    fn empty_pins_continue_without_tui() {
+        let outcome = run_compact_walkthrough(&[]).unwrap();
+        assert_eq!(outcome, WalkthroughOutcome::Continue { pins: vec![] });
+    }
 }

@@ -92,7 +92,8 @@ fn resolve_and_rewrite_via_resolve_maps() {
     );
     assert!(
         pins.iter().any(|p| {
-            p.name == "group/ci-templates" && p.pinned == "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+            p.name == "group/ci-templates"
+                && p.pinned == "group/ci-templates@bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
         }),
         "include pin missing: {pins:?}"
     );
