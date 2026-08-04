@@ -12,6 +12,9 @@ pub enum EcosystemKind {
     Python,
     Docker,
     Actions,
+    Terraform,
+    Helm,
+    K8s,
 }
 
 impl EcosystemKind {
@@ -22,6 +25,9 @@ impl EcosystemKind {
             Self::Python => "python",
             Self::Docker => "docker",
             Self::Actions => "actions",
+            Self::Terraform => "terraform",
+            Self::Helm => "helm",
+            Self::K8s => "k8s",
         }
     }
 }

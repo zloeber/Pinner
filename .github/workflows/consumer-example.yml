@@ -1,5 +1,8 @@
 # Documentation-only consumer workflow sample.
 # Trigger manually; not part of this repo's required CI.
+#
+# Terraform is enabled by default. Helm and Kubernetes are opt-in — add a repo-root
+# pinner.toml with [ecosystems] helm = true / k8s = true before `pinner check` if you use them.
 name: consumer-example
 on:
   workflow_dispatch:

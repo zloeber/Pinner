@@ -1,0 +1,22 @@
+---
+description: Always run lean local CI before pushing branch updates
+alwaysApply: true
+---
+
+# Pre-push local CI
+
+Before any `git push` (including `-u` / force with lease), run:
+
+```bash
+scripts/ci-local
+```
+
+Gates (same as GitHub Actions): `fmt` → `clippy` → `test` → `schema`.
+
+Rules:
+
+- Do **not** push if `scripts/ci-local` exits non-zero.
+- Use the script’s short summary only — do not paste full cargo logs into chat.
+- Fix failures with the hinted commands (`cargo fmt --all`, targeted `cargo test -p …`, etc.), re-run `scripts/ci-local`, then push.
+- Emergency skip (rare): `PINNER_SKIP_LOCAL_CI=1 git push` — say why in the commit/PR note.
+- Prefer `task ci` only when you need Taskfile; default is `scripts/ci-local` for lean output.

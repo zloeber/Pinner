@@ -1,0 +1,7 @@
+#!/usr/bin/env zsh
+# Optional git hook: enable with
+#   git config core.hooksPath .githooks
+# (do this locally; not required for Cursor hook/rule)
+set -euo pipefail
+ROOT="$(git rev-parse --show-toplevel)"
+exec "$ROOT/scripts/ci-local"

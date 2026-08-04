@@ -27,6 +27,7 @@ pub fn required_tools(enabled: &[EcosystemKind]) -> Vec<&'static str> {
             EcosystemKind::Python => &["uv"],
             EcosystemKind::Docker => &["docker"],
             EcosystemKind::Actions => &["gh"],
+            EcosystemKind::Terraform | EcosystemKind::Helm | EcosystemKind::K8s => &[],
         };
         for &tool in ecosystem_tools {
             if seen.insert(tool) {
@@ -73,6 +74,7 @@ fn required_by(name: &str, enabled: &[EcosystemKind]) -> Vec<EcosystemKind> {
             EcosystemKind::Python => name == "uv",
             EcosystemKind::Docker => name == "docker",
             EcosystemKind::Actions => name == "gh",
+            EcosystemKind::Terraform | EcosystemKind::Helm | EcosystemKind::K8s => false,
         })
         .collect()
 }

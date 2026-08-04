@@ -1,0 +1,122 @@
+#!/usr/bin/env zsh
+# Lean local CI gate matching GitHub Actions lint + test jobs.
+# Prints a short actionable summary (not full logs). Exit 0 only if all pass.
+#
+# Usage:
+#   scripts/ci-local           # fmt + clippy + test + schema
+#   scripts/ci-local fmt       # one gate
+#   PINNER_SKIP_LOCAL_CI=1 …   # skip (hook/rule honor this)
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+cd "$ROOT"
+
+if [[ "${PINNER_SKIP_LOCAL_CI:-}" == "1" ]]; then
+  print -r -- "SKIP local CI (PINNER_SKIP_LOCAL_CI=1)"
+  exit 0
+fi
+
+run_cargo() {
+  if command -v mise >/dev/null 2>&1; then
+    mise exec -- cargo "$@"
+  else
+    cargo "$@"
+  fi
+}
+
+# Keep failure output short for agent context.
+trim_fail() {
+  local title="$1"
+  local log="$2"
+  print -r -- "FAIL ${title}"
+  # Prefer rustc/clippy error lines; fall back to last 25 lines.
+  if grep -E -n 'error(\[[A-Z0-9]+\])?:|Diff in |FAILED|test result: FAILED' "$log" >/tmp/pinner-ci-hits.$$ 2>/dev/null; then
+    head -n 20 /tmp/pinner-ci-hits.$$
+    local n
+    n=$(wc -l </tmp/pinner-ci-hits.$$ | tr -d ' ')
+    if (( n > 20 )); then
+      print -r -- "... ($((n - 20)) more hit lines; see full log below path)"
+    fi
+  else
+    tail -n 25 "$log"
+  fi
+  rm -f /tmp/pinner-ci-hits.$$
+  print -r -- "log: ${log}"
+}
+
+gate_fmt() {
+  local log
+  log="$(mktemp -t pinner-ci-fmt)"
+  if run_cargo fmt --all -- --check >"$log" 2>&1; then
+    print -r -- "OK   fmt"
+    rm -f "$log"
+    return 0
+  fi
+  trim_fail "fmt (run: cargo fmt --all)" "$log"
+  return 1
+}
+
+gate_clippy() {
+  local log
+  log="$(mktemp -t pinner-ci-clippy)"
+  if run_cargo clippy --locked --workspace --all-targets -- -D warnings >"$log" 2>&1; then
+    print -r -- "OK   clippy"
+    rm -f "$log"
+    return 0
+  fi
+  trim_fail "clippy (fix warnings/errors above)" "$log"
+  return 1
+}
+
+gate_test() {
+  local log
+  log="$(mktemp -t pinner-ci-test)"
+  if run_cargo test --locked --workspace >"$log" 2>&1; then
+    print -r -- "OK   test"
+    rm -f "$log"
+    return 0
+  fi
+  trim_fail "test (re-run failing test with cargo test -p <crate> <name>)" "$log"
+  return 1
+}
+
+gate_schema() {
+  local log
+  log="$(mktemp -t pinner-ci-schema)"
+  if run_cargo test --locked -p pinner --test lock_schema >"$log" 2>&1; then
+    print -r -- "OK   schema"
+    rm -f "$log"
+    return 0
+  fi
+  trim_fail "schema (cargo test -p pinner --test lock_schema)" "$log"
+  return 1
+}
+
+# Allow: scripts/ci-local   OR   scripts/ci-local fmt clippy
+if [[ $# -eq 0 ]]; then
+  gates=(fmt clippy test schema)
+else
+  gates=("$@")
+fi
+
+failed=0
+print -r -- "local-ci: ${gates[*]}"
+for g in "${gates[@]}"; do
+  case "$g" in
+    fmt) gate_fmt || failed=1 ;;
+    clippy) gate_clippy || failed=1 ;;
+    test) gate_test || failed=1 ;;
+    schema) gate_schema || failed=1 ;;
+    *)
+      print -r -- "FAIL unknown gate: $g (want: fmt|clippy|test|schema)"
+      failed=1
+      ;;
+  esac
+done
+
+if (( failed )); then
+  print -r -- "RESULT fail — fix above, then re-run: scripts/ci-local"
+  exit 1
+fi
+print -r -- "RESULT pass"
+exit 0

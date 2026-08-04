@@ -10,6 +10,10 @@ members = [
   "crates/pinner-python",
   "crates/pinner-docker",
   "crates/pinner-actions",
+  "crates/pinner-iac-common",
+  "crates/pinner-terraform",
+  "crates/pinner-helm",
+  "crates/pinner-k8s",
 ]
 
 [workspace.package]
@@ -41,3 +45,8 @@ pinner-node = { path = "crates/pinner-node" }
 pinner-python = { path = "crates/pinner-python" }
 pinner-docker = { path = "crates/pinner-docker" }
 pinner-actions = { path = "crates/pinner-actions" }
+hcl-edit = "0.9"
+pinner-iac-common = { path = "crates/pinner-iac-common" }
+pinner-terraform = { path = "crates/pinner-terraform" }
+pinner-helm = { path = "crates/pinner-helm" }
+pinner-k8s = { path = "crates/pinner-k8s" }

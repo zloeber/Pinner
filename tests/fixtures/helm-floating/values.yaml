@@ -1,0 +1,7 @@
+# Intentionally floating image — Helm ecosystem must never rewrite values.yaml.
+image:
+  repository: nginx
+  tag: latest
+redis:
+  image:
+    tag: latest
