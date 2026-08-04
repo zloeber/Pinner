@@ -1,7 +1,12 @@
 name: ci
 on: push
 jobs:
-  t:
+  build:
     runs-on: ubuntu-latest
+    container: node:20
+    services:
+      redis:
+        image: redis:latest
     steps:
       - uses: actions/checkout@v4
+      - uses: org/repo/.github/workflows/reuse.yml@v1
