@@ -1,6 +1,12 @@
 # Quick start
 
-Install from this repository:
+Install the latest release (Linux / macOS, x86_64 or arm64):
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/zloeber/Pinner/main/scripts/install.sh | zsh
+```
+
+Or build from this repository:
 
 ```bash
 cargo install --locked --path crates/pinner

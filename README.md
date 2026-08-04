@@ -10,7 +10,15 @@ Docs (GitHub Pages): <https://zloeber.github.io/Pinner/>
 
 ## Install
 
-Download a multi-platform binary from [GitHub Releases](https://github.com/zloeber/Pinner/releases) (Linux/macOS/Windows), or build from source:
+**Linux / macOS (curl installer):**
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/zloeber/Pinner/main/scripts/install.sh | zsh
+```
+
+Installs to `~/.local/bin/pinner` (override with `PINNER_INSTALL_DIR`). Pin a version with `PINNER_VERSION=0.2.0`, or dry-run with `PINNER_INSTALL_DRY_RUN=1`.
+
+Download a multi-platform binary manually from [GitHub Releases](https://github.com/zloeber/Pinner/releases) (Linux/macOS/Windows), or build from source:
 
 ```bash
 cargo install --locked --path crates/pinner

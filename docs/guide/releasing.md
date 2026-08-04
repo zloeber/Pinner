@@ -30,7 +30,26 @@ Supported tag patterns:
 | `aarch64-apple-darwin` | macos-latest |
 | `x86_64-pc-windows-msvc` | windows-latest |
 
-Artifacts are attached to the GitHub Release as `.tar.gz` (Unix) or `.zip` (Windows).
+Artifacts are attached to the GitHub Release as `.tar.gz` (Unix) or `.zip` (Windows). Asset names follow `pinner-{version}-{target}.tar.gz` (for example `pinner-0.2.0-x86_64-unknown-linux-gnu.tar.gz`).
+
+## End-user install
+
+After a release is published, users on Linux or macOS can install with:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/zloeber/Pinner/main/scripts/install.sh | zsh
+```
+
+Environment variables:
+
+| Variable | Default | Purpose |
+|----------|---------|---------|
+| `PINNER_VERSION` | latest GitHub Release | Pin a semver (without `v`) |
+| `PINNER_INSTALL_DIR` | `$HOME/.local/bin` | Install destination |
+| `PINNER_INSTALL_DRY_RUN` | unset | Set to `1` to print URL and path only |
+| `PINNER_REPO` | `zloeber/Pinner` | GitHub `owner/repo` for releases |
+
+Windows users download the `.zip` asset from the GitHub Release page.
 
 ## Dry run
 
