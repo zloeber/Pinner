@@ -10,7 +10,7 @@ Pinner uses **tag-driven semantic versions**. A GitHub Release (with multi-platf
    - `feat!:` or commit body containing `BREAKING CHANGE` → major bump
    - Docs/chore-only commits do **not** create a release
 2. [`.github/workflows/semantic-release.yml`](../../.github/workflows/semantic-release.yml) runs on `main`, computes the next version, and pushes an annotated tag `vMAJOR.MINOR.PATCH`.
-3. [`.github/workflows/release.yml`](../../.github/workflows/release.yml) runs on that tag, rewrites `[workspace.package].version` from the tag for the build, compiles binaries, and publishes the GitHub Release.
+3. [`.github/workflows/release.yml`](../../.github/workflows/release.yml) runs on that tag, rewrites `[workspace.package].version` from the tag for the build, runs `cargo update -w` so `Cargo.lock` path-package versions match, compiles binaries with `--locked`, and publishes the GitHub Release.
 
 `pinner --version` reports the latest `v*` git tag (via `build.rs` / `git describe`), falling back to `Cargo.toml` when git history is unavailable.
 

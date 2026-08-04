@@ -24,4 +24,5 @@ Lookup table for all pattern files in this directory. Check here before starting
 | Pattern | Use when |
 |---------|----------|
 | [fix-github-actions-node24.md](fix-github-actions-node24.md) | Node 20 Actions deprecation warnings or semantic-release PAT checkout auth failures |
+| [fix-release-locked-after-version-bump.md](fix-release-locked-after-version-bump.md) | release.yml fails `cargo build --locked` after rewriting workspace version from tag |
 | [fix-semantic-release-chain.md](fix-semantic-release-chain.md) | Semantic-release creates a tag but release.yml never starts |
