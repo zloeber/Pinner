@@ -1,11 +1,16 @@
 mod cli;
 
+use std::cell::Cell;
+use std::io::{self, IsTerminal, Write};
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 use std::sync::Arc;
 
 use clap::Parser;
-use pinner_core::{ExplainReport, Policy, RunOptions, RunReport, audit, check, explain, pin};
+use pinner_core::{
+    ExplainReport, Policy, RunOptions, RunReport, WalkthroughFilter, WalkthroughOutcome, audit,
+    check, explain, pin, pin_with_filter,
+};
 use pinner_ecosystem::{Ecosystem, EcosystemKind};
 use pinner_toolchain::{ToolStatus, ensure, status};
 
@@ -26,17 +31,26 @@ fn main() -> ExitCode {
 }
 
 fn run(cli: Cli) -> CliResult<ExitCode> {
+    if cli.walkthrough && (cli.agent || cli.format == Format::Json || !stdout_is_tty()) {
+        return Err("walkthrough requires an interactive TTY (not --agent/--format json)".into());
+    }
+
+    let format = effective_format(&cli);
+
     match &cli.cmd {
         Commands::Audit { fix } => {
             let (policy, opts, ecosystems) = prepare(&cli)?;
             if *fix {
-                // Pin only the floating non-allowlisted findings audit would report.
-                let report = pin(&ecosystems, &policy, &opts)?;
-                emit_report(&report, cli.format)?;
+                let (report, aborted) = run_pin(&ecosystems, &policy, &opts, cli.walkthrough)?;
+                if aborted {
+                    eprintln!("walkthrough aborted; nothing written");
+                    return Ok(ExitCode::SUCCESS);
+                }
+                emit_report(&report, format)?;
                 Ok(ExitCode::SUCCESS)
             } else {
                 let report = audit(&ecosystems, &policy, &opts)?;
-                emit_audit(&report, cli.format)?;
+                emit_audit(&report, format)?;
                 if report.findings.is_empty() {
                     Ok(ExitCode::SUCCESS)
                 } else {
@@ -47,20 +61,24 @@ fn run(cli: Cli) -> CliResult<ExitCode> {
         Commands::Explain { target } => {
             let (policy, opts, ecosystems) = prepare(&cli)?;
             let report = explain(&ecosystems, &policy, &opts, target)?;
-            emit_explain(&report, cli.format)?;
+            emit_explain(&report, format)?;
             Ok(ExitCode::SUCCESS)
         }
-        Commands::Toolchain(cmd) => run_toolchain(&cli, cmd),
+        Commands::Toolchain(cmd) => run_toolchain(&cli, cmd, format),
         Commands::Pin => {
             let (policy, opts, ecosystems) = prepare(&cli)?;
-            let report = pin(&ecosystems, &policy, &opts)?;
-            emit_report(&report, cli.format)?;
+            let (report, aborted) = run_pin(&ecosystems, &policy, &opts, cli.walkthrough)?;
+            if aborted {
+                eprintln!("walkthrough aborted; nothing written");
+                return Ok(ExitCode::SUCCESS);
+            }
+            emit_report(&report, format)?;
             Ok(ExitCode::SUCCESS)
         }
         Commands::Check => {
             let (policy, opts, ecosystems) = prepare(&cli)?;
             let report = check(&ecosystems, &policy, &opts)?;
-            emit_report(&report, cli.format)?;
+            emit_report(&report, format)?;
             if report.drift.is_empty() {
                 Ok(ExitCode::SUCCESS)
             } else {
@@ -68,6 +86,38 @@ fn run(cli: Cli) -> CliResult<ExitCode> {
             }
         }
     }
+}
+
+fn run_pin(
+    ecosystems: &[Arc<dyn Ecosystem>],
+    policy: &Policy,
+    opts: &RunOptions,
+    walkthrough: bool,
+) -> CliResult<(RunReport, bool)> {
+    if !walkthrough {
+        return Ok((pin(ecosystems, policy, opts)?, false));
+    }
+
+    let aborted = Cell::new(false);
+    let mut filter =
+        |pins: &[pinner_ecosystem::Pin]| -> Result<WalkthroughOutcome, pinner_core::CoreError> {
+            let outcome = pinner_ui::run_compact_walkthrough(pins)?;
+            if matches!(outcome, WalkthroughOutcome::Aborted) {
+                aborted.set(true);
+            }
+            Ok(outcome)
+        };
+    let filter_ref: &mut WalkthroughFilter<'_> = &mut filter;
+    let report = pin_with_filter(ecosystems, policy, opts, Some(filter_ref))?;
+    Ok((report, aborted.get()))
+}
+
+fn effective_format(cli: &Cli) -> Format {
+    if cli.agent { Format::Json } else { cli.format }
+}
+
+fn stdout_is_tty() -> bool {
+    io::stdout().is_terminal()
 }
 
 fn prepare(cli: &Cli) -> CliResult<Prepared> {
@@ -83,7 +133,7 @@ fn prepare(cli: &Cli) -> CliResult<Prepared> {
     Ok((policy, opts, register_ecosystems()))
 }
 
-fn run_toolchain(cli: &Cli, cmd: &ToolchainCmd) -> CliResult<ExitCode> {
+fn run_toolchain(cli: &Cli, cmd: &ToolchainCmd, format: Format) -> CliResult<ExitCode> {
     let config_path = resolve_config_path(cli.config.as_deref())?;
     let policy = Policy::load(config_path.as_deref())?;
     let enabled = enabled_kinds(cli, &policy)?;
@@ -91,12 +141,12 @@ fn run_toolchain(cli: &Cli, cmd: &ToolchainCmd) -> CliResult<ExitCode> {
     match cmd {
         ToolchainCmd::Status => {
             let tools = status(&enabled);
-            emit_toolchain(&tools, cli.format)?;
+            emit_toolchain(&tools, format)?;
             Ok(ExitCode::SUCCESS)
         }
         ToolchainCmd::Ensure => {
             let tools = ensure(&enabled, policy.toolchain_install, cli.offline)?;
-            emit_toolchain(&tools, cli.format)?;
+            emit_toolchain(&tools, format)?;
             Ok(ExitCode::SUCCESS)
         }
     }
@@ -185,30 +235,36 @@ fn emit_report(report: &RunReport, format: Format) -> Result<(), Box<dyn std::er
             println!("{}", serde_json::to_string_pretty(report)?);
         }
         Format::Text => {
-            println!(
-                "pins: {}  rewrites: {}  findings: {}  drift: {}",
-                report.pins.len(),
-                report.rewrites.len(),
-                report.findings.len(),
-                report.drift.len()
-            );
-            for finding in &report.findings {
+            if stdout_is_tty() {
+                let mut out = io::stdout().lock();
+                pinner_ui::emit_pretty_report(report, &mut out)?;
+                out.flush()?;
+            } else {
                 println!(
-                    "finding {} {} requested={} floating={}",
-                    finding.path.display(),
-                    finding.name,
-                    finding.requested,
-                    finding.is_floating
+                    "pins: {}  rewrites: {}  findings: {}  drift: {}",
+                    report.pins.len(),
+                    report.rewrites.len(),
+                    report.findings.len(),
+                    report.drift.len()
                 );
-            }
-            for item in &report.drift {
-                println!(
-                    "drift {} {} expected={} actual={}",
-                    item.path.display(),
-                    item.name,
-                    item.expected,
-                    item.actual
-                );
+                for finding in &report.findings {
+                    println!(
+                        "finding {} {} requested={} floating={}",
+                        finding.path.display(),
+                        finding.name,
+                        finding.requested,
+                        finding.is_floating
+                    );
+                }
+                for item in &report.drift {
+                    println!(
+                        "drift {} {} expected={} actual={}",
+                        item.path.display(),
+                        item.name,
+                        item.expected,
+                        item.actual
+                    );
+                }
             }
         }
     }

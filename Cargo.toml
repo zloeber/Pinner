@@ -19,6 +19,7 @@ members = [
   "crates/pinner-ruby",
   "crates/pinner-gitlab",
   "crates/pinner-azure",
+  "crates/pinner-ui",
 ]
 
 [workspace.package]
@@ -60,3 +61,6 @@ pinner-go = { path = "crates/pinner-go" }
 pinner-ruby = { path = "crates/pinner-ruby" }
 pinner-gitlab = { path = "crates/pinner-gitlab" }
 pinner-azure = { path = "crates/pinner-azure" }
+pinner-ui = { path = "crates/pinner-ui" }
+ratatui = "0.30"
+crossterm = "0.29"

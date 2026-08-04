@@ -27,6 +27,12 @@ pub struct Cli {
     pub ecosystem: Option<Vec<String>>,
     #[arg(long, global = true, default_value = "text")]
     pub format: Format,
+    /// Interactive compact-list gate before rewrite/lock writes
+    #[arg(long, global = true)]
+    pub walkthrough: bool,
+    /// Force agent mode (JSON output, no TUI prompts)
+    #[arg(long, global = true)]
+    pub agent: bool,
 }
 
 #[derive(Debug, Subcommand)]
