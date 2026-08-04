@@ -127,10 +127,44 @@ jobs:
             echo "tag_exists=false" >> "$GITHUB_OUTPUT"
           fi
 
-      # PAT is required so the tag push can trigger release.yml (GITHUB_TOKEN
-      # pushes do not chain workflows by default). Also clear any leftover
-      # checkout auth header so the PAT in the push URL is what GitHub sees.
-      - name: Create and push tag
+      - name: Install Rust toolchain
+        if: >-
+          steps.version.outputs.should_release == 'true' &&
+          steps.check_tag.outputs.tag_exists == 'false'
+        uses: dtolnay/rust-toolchain@stable
+
+      # Keep [workspace.package].version + Cargo.lock aligned with the release
+      # tag so `task install` / `cargo install --path` report the real version
+      # (cargo metadata uses Cargo.toml, not git describe).
+      - name: Bump workspace version for release
+        if: >-
+          steps.version.outputs.should_release == 'true' &&
+          steps.check_tag.outputs.tag_exists == 'false'
+        run: |
+          set -euo pipefail
+          VERSION="${{ steps.version.outputs.new_version }}"
+          python3 - "$VERSION" <<'PY'
+          import pathlib, re, sys
+          version = sys.argv[1]
+          path = pathlib.Path("Cargo.toml")
+          text = path.read_text(encoding="utf-8")
+          pattern = re.compile(
+              r"(?ms)(^\[workspace\.package\].*?^version\s*=\s*)\"[^\"]*\"",
+          )
+          new_text, n = pattern.subn(rf'\1"{version}"', text, count=1)
+          if n != 1:
+              raise SystemExit("failed to rewrite [workspace.package].version in Cargo.toml")
+          path.write_text(new_text, encoding="utf-8")
+          print(f"Set [workspace.package].version = \"{version}\"")
+          PY
+          cargo update -w
+
+      # PAT is required so the commit/tag push can trigger release.yml
+      # (GITHUB_TOKEN pushes do not chain workflows by default). Also clear
+      # leftover checkout auth so the PAT in the push URL is what GitHub sees.
+      # chore(release) commit does not match feat/fix/… so a follow-up
+      # semantic-release run after the push will no-op.
+      - name: Commit version bump, create and push tag
         if: >-
           steps.version.outputs.should_release == 'true' &&
           steps.check_tag.outputs.tag_exists == 'false'
@@ -138,16 +172,22 @@ jobs:
           PAT_TOKEN: ${{ secrets.PAT_TOKEN }}
         run: |
           set -euo pipefail
-          TAG="v${{ steps.version.outputs.new_version }}"
+          VERSION="${{ steps.version.outputs.new_version }}"
+          TAG="v${VERSION}"
+          git add Cargo.toml Cargo.lock
+          git commit -m "chore(release): ${TAG}"
           git tag -a "$TAG" -m "Release $TAG"
           git config --local --unset-all http.https://github.com/.extraheader 2>/dev/null || true
-          if ! git -c "http.https://github.com/.extraheader=" \
-            push "https://x-access-token:${PAT_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" \
-            "refs/tags/${TAG}"; then
+          remote="https://x-access-token:${PAT_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
+          if ! git -c "http.https://github.com/.extraheader=" push "$remote" HEAD:main; then
+            echo "::error::Failed to push release commit with PAT_TOKEN. Re-seed a valid classic PAT (contents:write) via secretzero agent sync --web."
+            exit 1
+          fi
+          if ! git -c "http.https://github.com/.extraheader=" push "$remote" "refs/tags/${TAG}"; then
             echo "::error::Failed to push tag with PAT_TOKEN. Re-seed a valid classic PAT (contents:write) via secretzero agent sync --web — expired/revoked/wrong-scope tokens fail here."
             exit 1
           fi
-          echo "Created and pushed tag: $TAG"
+          echo "Committed version bump and pushed tag: $TAG"
 
       - name: Log output
         run: |

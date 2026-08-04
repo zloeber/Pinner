@@ -9,10 +9,10 @@ Pinner uses **tag-driven semantic versions**. A GitHub Release (with multi-platf
    - `fix:` / `refactor:` / `perf:` → patch bump
    - `feat!:` or commit body containing `BREAKING CHANGE` → major bump
    - Docs/chore-only commits do **not** create a release
-2. [`.github/workflows/semantic-release.yml`](../../.github/workflows/semantic-release.yml) runs on `main`, computes the next version, and pushes an annotated tag `vMAJOR.MINOR.PATCH`.
-3. [`.github/workflows/release.yml`](../../.github/workflows/release.yml) runs on that tag, rewrites `[workspace.package].version` from the tag for the build, runs `cargo update -w` so `Cargo.lock` path-package versions match, compiles binaries with `--locked`, and publishes the GitHub Release.
+2. [`.github/workflows/semantic-release.yml`](../../.github/workflows/semantic-release.yml) runs on `main`, computes the next version, commits a `chore(release): vX.Y.Z` bump of `[workspace.package].version` + `Cargo.lock`, and pushes an annotated tag on that commit.
+3. [`.github/workflows/release.yml`](../../.github/workflows/release.yml) runs on that tag, aligns workspace version from the tag for the build (idempotent when already bumped), runs `cargo update -w`, compiles binaries with `--locked`, and publishes the GitHub Release.
 
-`pinner --version` reports the latest `v*` git tag (via `build.rs` / `git describe`), falling back to `Cargo.toml` when git history is unavailable.
+`pinner --version` reports the latest `v*` git tag (via `build.rs` / `git describe`), falling back to `Cargo.toml` when git history is unavailable. `task install` / `cargo install --path` report the `Cargo.toml` package version—kept in sync by the release commit above.
 
 ### One-time: seed `PAT_TOKEN` with SecretZero
 
@@ -50,7 +50,7 @@ git tag -a v0.2.0 -m "v0.2.0"
 git push origin v0.2.0
 ```
 
-You do **not** need to bump `Cargo.toml` first. The release workflow sets the workspace version from the tag before building. Local `Cargo.toml` may lag; the CLI still prefers git tags when present.
+You do **not** need to bump `Cargo.toml` first for a manual tag: the release workflow sets the workspace version from the tag before building. Prefer letting semantic-release bump `Cargo.toml` on `main` so local `task install` matches the published version.
 
 Supported tag patterns:
 
