@@ -15,6 +15,11 @@ pub enum EcosystemKind {
     Terraform,
     Helm,
     K8s,
+    Cargo,
+    Go,
+    Ruby,
+    Gitlab,
+    Azure,
 }
 
 impl EcosystemKind {
@@ -28,6 +33,11 @@ impl EcosystemKind {
             Self::Terraform => "terraform",
             Self::Helm => "helm",
             Self::K8s => "k8s",
+            Self::Cargo => "cargo",
+            Self::Go => "go",
+            Self::Ruby => "ruby",
+            Self::Gitlab => "gitlab",
+            Self::Azure => "azure",
         }
     }
 }

@@ -44,3 +44,27 @@ fn toml_can_enable_helm_and_k8s() {
     assert!(p.is_enabled(EcosystemKind::K8s));
     assert!(p.is_enabled(EcosystemKind::Terraform));
 }
+
+#[test]
+fn defaults_enable_languages_but_not_gitlab_or_azure() {
+    let p = Policy::default_policy();
+    assert!(p.is_enabled(EcosystemKind::Cargo));
+    assert!(p.is_enabled(EcosystemKind::Go));
+    assert!(p.is_enabled(EcosystemKind::Ruby));
+    assert!(!p.is_enabled(EcosystemKind::Gitlab));
+    assert!(!p.is_enabled(EcosystemKind::Azure));
+}
+
+#[test]
+fn toml_can_enable_gitlab_and_azure() {
+    let dir = tempdir().unwrap();
+    let path = dir.path().join("pinner.toml");
+    fs::write(
+        &path,
+        "[ecosystems]\ngitlab = true\nazure = true\n",
+    )
+    .unwrap();
+    let p = Policy::load(Some(&path)).unwrap();
+    assert!(p.is_enabled(EcosystemKind::Gitlab));
+    assert!(p.is_enabled(EcosystemKind::Azure));
+}

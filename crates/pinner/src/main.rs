@@ -165,6 +165,11 @@ fn parse_ecosystem(value: &str) -> Result<EcosystemKind, Box<dyn std::error::Err
         "terraform" => Ok(EcosystemKind::Terraform),
         "helm" => Ok(EcosystemKind::Helm),
         "k8s" => Ok(EcosystemKind::K8s),
+        "cargo" => Ok(EcosystemKind::Cargo),
+        "go" => Ok(EcosystemKind::Go),
+        "ruby" => Ok(EcosystemKind::Ruby),
+        "gitlab" => Ok(EcosystemKind::Gitlab),
+        "azure" => Ok(EcosystemKind::Azure),
         other => Err(format!("unknown ecosystem: {other}").into()),
     }
 }

@@ -27,7 +27,7 @@
   "$defs": {
     "ecosystem": {
       "type": "string",
-      "enum": ["mise", "node", "python", "docker", "actions", "terraform", "helm", "k8s"]
+      "enum": ["mise", "node", "python", "docker", "actions", "terraform", "helm", "k8s", "cargo", "go", "ruby", "gitlab", "azure"]
     },
     "evidence": {
       "type": "string",
