@@ -99,6 +99,8 @@ tasks:
     desc: Install the pinner binary into cargo bin directory
     cmds:
       - mise exec -- cargo install --locked --path crates/pinner --force
+      # cargo install prints Cargo.toml's package version; confirm the binary.
+      - '"$HOME"/.cargo/bin/pinner --version'
 
   check:
     desc: Type-check the workspace

@@ -90,8 +90,8 @@ Automated path after merge to `main`:
 Notes for agents:
 
 - Prefer PR titles/commits that match conventional commit style when the change should release.
-- Do **not** require a manual `Cargo.toml` bump for CI releases; local workspace version may lag.
-- `pinner --version` comes from `crates/pinner/build.rs` (`git describe --match 'v*'`), falling back to `CARGO_PKG_VERSION`.
+- Do **not** require a manual `Cargo.toml` bump for CI releases; semantic-release commits `chore(release): vX.Y.Z` with the workspace version + lock sync before tagging.
+- `pinner --version` comes from `crates/pinner/build.rs` (`git describe --match 'v*'`), falling back to `CARGO_PKG_VERSION`. `task install` shows Cargo’s package version from `Cargo.toml`.
 - Manual tags still work: `git tag -a vX.Y.Z && git push origin vX.Y.Z`.
 - Details: [`docs/guide/releasing.md`](docs/guide/releasing.md).
 
