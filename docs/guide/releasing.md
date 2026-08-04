@@ -16,7 +16,7 @@ Pinner uses **tag-driven semantic versions**. A GitHub Release (with multi-platf
 
 ### One-time: seed `PAT_TOKEN` with SecretZero
 
-Semantic-release checks out with `GITHUB_TOKEN`, then uses a classic PAT only for the tag push so `release.yml` can chain (default `GITHUB_TOKEN` pushes do not trigger other workflows).
+Semantic-release checks out with `GITHUB_TOKEN` (`persist-credentials: false`), then uses a classic PAT only for the tag push so `release.yml` can chain (default `GITHUB_TOKEN` pushes do not trigger other workflows). The push step also clears checkout’s `http.*.extraheader` so URL-embedded PAT credentials are not overridden by a persisted job token.
 
 1. Create a **classic** PAT (`ghp_…`) with `repo` / contents write for `zloeber/Pinner`. Fine-grained tokens work only if they have Contents: Read and Write on this repo.
 2. From the repo root, sync via SecretZero using [`Secretfile.yml`](../../Secretfile.yml) (maps `release_token` → Actions secret `PAT_TOKEN`):
@@ -34,6 +34,14 @@ secretzero agent sync --web
 Never commit PAT values.
 
 If semantic-release fails on “Failed to push tag with PAT_TOKEN”, the secret exists but the token value is expired, revoked, or missing write scope — create a new classic PAT and re-run `secretzero agent sync --web`.
+
+If a tag is created but **release** never starts, the tag was almost certainly pushed with `GITHUB_TOKEN` (checkout’s persisted `http.extraheader` beating the PAT URL). Confirm with Actions: no `release` run for that tag. Fix is already in `semantic-release.yml` (`persist-credentials: false` + clear extraheader before push). To recover a stuck tag (for example `v0.2.0`): delete it and re-push with a human PAT, or delete it and re-run **Semantic Release** after the fix is on `main`:
+
+```bash
+git push origin :refs/tags/v0.2.0
+# then: Actions → Semantic Release → Run workflow
+# or re-push the annotated tag from a machine authenticated as a user/PAT
+```
 
 ## Manual tag (still supported)
 
