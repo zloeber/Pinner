@@ -37,7 +37,7 @@ Artifacts are attached to the GitHub Release as `.tar.gz` (Unix) or `.zip` (Wind
 After a release is published, users on Linux or macOS can install with:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/zloeber/Pinner/main/scripts/install.sh | zsh
+curl -fsSL https://raw.githubusercontent.com/zloeber/Pinner/main/scripts/install.sh | bash
 ```
 
 Environment variables:

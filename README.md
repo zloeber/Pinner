@@ -13,7 +13,7 @@ Docs (GitHub Pages): <https://zloeber.github.io/Pinner/>
 **Linux / macOS (curl installer):**
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/zloeber/Pinner/main/scripts/install.sh | zsh
+curl -fsSL https://raw.githubusercontent.com/zloeber/Pinner/main/scripts/install.sh | bash
 ```
 
 Installs to `~/.local/bin/pinner` (override with `PINNER_INSTALL_DIR`). Pin a version with `PINNER_VERSION=0.2.0`, or dry-run with `PINNER_INSTALL_DRY_RUN=1`.

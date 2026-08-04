@@ -51,7 +51,7 @@ jobs:
         run: task test:schema
 
       - name: Installer dry-run smoke
-        run: PINNER_INSTALL_DRY_RUN=1 PINNER_VERSION=0.1.0 zsh scripts/install.sh
+        run: PINNER_INSTALL_DRY_RUN=1 PINNER_VERSION=0.1.0 bash scripts/install.sh
 
   # Aggregate gate so branch protection can require a single check name.
   ci:
