@@ -113,7 +113,8 @@ jobs:
           mkdir -p dist
           if [[ "${{ matrix.archive }}" == "zip" ]]; then
             asset="${bin_name}-${version}-${target}.zip"
-            (cd dist && zip -r "$asset" "$(basename "$stage")")
+            # windows-latest has no Info-ZIP `zip`; 7-Zip is preinstalled.
+            (cd dist && 7z a -tzip "$asset" "$(basename "$stage")")
           else
             asset="${bin_name}-${version}-${target}.tar.gz"
             tar -C dist -czf "dist/${asset}" "$(basename "$stage")"
