@@ -768,14 +768,19 @@ dependencies = [
  "clap",
  "jsonschema",
  "pinner-actions",
+ "pinner-azure",
+ "pinner-cargo",
  "pinner-core",
  "pinner-docker",
  "pinner-ecosystem",
+ "pinner-gitlab",
+ "pinner-go",
  "pinner-helm",
  "pinner-k8s",
  "pinner-mise",
  "pinner-node",
  "pinner-python",
+ "pinner-ruby",
  "pinner-terraform",
  "pinner-toolchain",
  "predicates",
@@ -791,6 +796,26 @@ dependencies = [
  "pinner-toolchain",
  "serde_json",
  "tempfile",
+ "walkdir",
+]
+
+[[package]]
+name = "pinner-azure"
+version = "0.1.0"
+dependencies = [
+ "pinner-ecosystem",
+ "serde_yaml",
+ "walkdir",
+]
+
+[[package]]
+name = "pinner-cargo"
+version = "0.1.0"
+dependencies = [
+ "pinner-ecosystem",
+ "tempfile",
+ "toml",
+ "toml_edit",
  "walkdir",
 ]
 
@@ -826,6 +851,23 @@ dependencies = [
  "serde",
  "serde_json",
  "thiserror",
+]
+
+[[package]]
+name = "pinner-gitlab"
+version = "0.1.0"
+dependencies = [
+ "pinner-ecosystem",
+ "serde_yaml",
+ "walkdir",
+]
+
+[[package]]
+name = "pinner-go"
+version = "0.1.0"
+dependencies = [
+ "pinner-ecosystem",
+ "walkdir",
 ]
 
 [[package]]
@@ -895,6 +937,14 @@ dependencies = [
  "tempfile",
  "toml",
  "toml_edit",
+ "walkdir",
+]
+
+[[package]]
+name = "pinner-ruby"
+version = "0.1.0"
+dependencies = [
+ "pinner-ecosystem",
  "walkdir",
 ]
 
