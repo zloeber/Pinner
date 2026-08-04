@@ -9,6 +9,5 @@ mise.local.toml
 .superpowers/
 .env
 .env.*
-.gitsecrets.lock
-.szvar
-*.szvar
+!.env.example
+
