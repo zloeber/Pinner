@@ -24,11 +24,22 @@ jobs:
     environment:
       name: production
     steps:
+      # Checkout with the job token. Do NOT pass PAT_TOKEN here — an invalid or
+      # empty PAT makes actions/checkout fail with a cryptic git auth error.
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           fetch-depth: 0
-          token: ${{ secrets.PAT_TOKEN }}
+
+      - name: Require PAT_TOKEN
+        env:
+          PAT_TOKEN: ${{ secrets.PAT_TOKEN }}
+        run: |
+          set -euo pipefail
+          if [[ -z "${PAT_TOKEN:-}" ]]; then
+            echo "::error::PAT_TOKEN is missing or empty. Seed a classic PAT (contents:write) via Secretfile.yml — secretzero agent sync --web"
+            exit 2
+          fi
 
       - name: Set up Git
         run: |
@@ -112,15 +123,22 @@ jobs:
             echo "tag_exists=false" >> "$GITHUB_OUTPUT"
           fi
 
+      # PAT is required so the tag push can trigger release.yml (GITHUB_TOKEN
+      # pushes do not chain workflows by default).
       - name: Create and push tag
         if: >-
           steps.version.outputs.should_release == 'true' &&
           steps.check_tag.outputs.tag_exists == 'false'
+        env:
+          PAT_TOKEN: ${{ secrets.PAT_TOKEN }}
         run: |
           set -euo pipefail
           TAG="v${{ steps.version.outputs.new_version }}"
           git tag -a "$TAG" -m "Release $TAG"
-          git push origin "$TAG"
+          if ! git push "https://x-access-token:${PAT_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" "refs/tags/${TAG}"; then
+            echo "::error::Failed to push tag with PAT_TOKEN. Re-seed a valid classic PAT (contents:write) via secretzero agent sync --web — expired/revoked/wrong-scope tokens fail here."
+            exit 1
+          fi
           echo "Created and pushed tag: $TAG"
 
       - name: Log output
