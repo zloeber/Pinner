@@ -12,6 +12,7 @@ use crate::error::CoreError;
 use crate::lock::{LockEntry, LockFile};
 use crate::policy::{AllowFloating, Policy};
 use crate::report::{DriftItem, RunReport};
+use crate::walkthrough::WalkthroughOutcome;
 
 pub(crate) const LOCK_NAME: &str = "pinner.lock.json";
 
@@ -26,10 +27,32 @@ struct StagedRewrite {
     rewrite: Rewrite,
 }
 
+struct ResolvedBatch {
+    ecosystem: Arc<dyn Ecosystem>,
+    manifests: Vec<Manifest>,
+    all_findings: Vec<Finding>,
+    floating: Vec<Finding>,
+    resolved: Vec<Pin>,
+}
+
+/// Callback invoked after resolve with proposed pins; may filter or abort.
+pub type WalkthroughFilter<'a> = dyn FnMut(&[Pin]) -> Result<WalkthroughOutcome, CoreError> + 'a;
+
 pub fn pin(
     ecosystems: &[Arc<dyn Ecosystem>],
     policy: &Policy,
     opts: &RunOptions,
+) -> Result<RunReport, CoreError> {
+    pin_with_filter(ecosystems, policy, opts, None)
+}
+
+/// Like [`pin`], but after resolve and before rewrite/lock an optional walkthrough
+/// callback may accept/skip/edit resolved pins or abort with no writes.
+pub fn pin_with_filter(
+    ecosystems: &[Arc<dyn Ecosystem>],
+    policy: &Policy,
+    opts: &RunOptions,
+    mut walkthrough: Option<&mut WalkthroughFilter<'_>>,
 ) -> Result<RunReport, CoreError> {
     let lock_path = opts.repo.join(LOCK_NAME);
     let lock_pins = if lock_path.exists() {
@@ -47,11 +70,10 @@ pub fn pin(
     let selected: Vec<_> = selected_ecosystems(ecosystems, policy, opts).collect();
     let selected_kinds: Vec<EcosystemKind> = selected.iter().map(|e| e.kind()).collect();
 
-    // Phase 1: discover/extract/resolve for every selected ecosystem; stage rewrites
-    // in memory. On any resolve failure, write nothing.
-    let mut report = RunReport::default();
-    let mut graph_pins = Vec::new();
-    let mut staged: Vec<StagedRewrite> = Vec::new();
+    // Phase 1: discover/extract/resolve for every selected ecosystem. On any resolve
+    // failure, write nothing. Rewrites are staged only after an optional walkthrough.
+    let mut batches = Vec::new();
+    let mut all_resolved = Vec::new();
 
     for ecosystem in &selected {
         let (manifests, all_findings) =
@@ -64,9 +86,41 @@ pub fn pin(
             .collect();
 
         let resolved = ecosystem.resolve(&floating, &ctx)?;
-        for manifest in &manifests {
+        all_resolved.extend(resolved.iter().cloned());
+        batches.push(ResolvedBatch {
+            ecosystem: Arc::clone(ecosystem),
+            manifests,
+            all_findings,
+            floating,
+            resolved,
+        });
+    }
+
+    if let Some(cb) = walkthrough.as_mut() {
+        match cb(&all_resolved)? {
+            WalkthroughOutcome::Aborted => return Ok(RunReport::default()),
+            WalkthroughOutcome::Continue { pins } => {
+                // Redistribute filtered resolved pins back onto each batch by key.
+                for batch in &mut batches {
+                    batch.resolved = pins
+                        .iter()
+                        .filter(|pin| pin.ecosystem == batch.ecosystem.kind())
+                        .cloned()
+                        .collect();
+                }
+            }
+        }
+    }
+
+    let mut report = RunReport::default();
+    let mut graph_pins = Vec::new();
+    let mut staged: Vec<StagedRewrite> = Vec::new();
+
+    for batch in &batches {
+        for manifest in &batch.manifests {
             let rel = repo_relative(&opts.repo, &manifest.path);
-            let manifest_pins: Vec<_> = resolved
+            let manifest_pins: Vec<_> = batch
+                .resolved
                 .iter()
                 .filter(|pin| pin.path == rel)
                 .cloned()
@@ -74,15 +128,15 @@ pub fn pin(
             if manifest_pins.is_empty() {
                 continue;
             }
-            if let Some(mut rewrite) = ecosystem.rewrite(manifest, &manifest_pins)? {
+            if let Some(mut rewrite) = batch.ecosystem.rewrite(manifest, &manifest_pins)? {
                 rewrite.path = repo_relative(&opts.repo, &rewrite.path);
                 staged.push(StagedRewrite { rewrite });
             }
         }
-        report.findings.extend(floating);
+        report.findings.extend(batch.floating.iter().cloned());
         graph_pins.extend(pins_for_full_graph(
-            &all_findings,
-            &resolved,
+            &batch.all_findings,
+            &batch.resolved,
             &lock_pins,
             policy,
             &opts.repo,
@@ -98,7 +152,7 @@ pub fn pin(
     combined.extend(graph_pins);
     report.pins = dedupe_pins(combined);
 
-    // Phase 2: only after all resolves succeed, write rewrites + lock.
+    // Phase 2: only after all resolves (and optional walkthrough) succeed, write.
     if !opts.dry_run {
         for staged_rw in &staged {
             let abs = if staged_rw.rewrite.path.is_absolute() {

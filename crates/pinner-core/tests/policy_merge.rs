@@ -59,11 +59,7 @@ fn defaults_enable_languages_but_not_gitlab_or_azure() {
 fn toml_can_enable_gitlab_and_azure() {
     let dir = tempdir().unwrap();
     let path = dir.path().join("pinner.toml");
-    fs::write(
-        &path,
-        "[ecosystems]\ngitlab = true\nazure = true\n",
-    )
-    .unwrap();
+    fs::write(&path, "[ecosystems]\ngitlab = true\nazure = true\n").unwrap();
     let p = Policy::load(Some(&path)).unwrap();
     assert!(p.is_enabled(EcosystemKind::Gitlab));
     assert!(p.is_enabled(EcosystemKind::Azure));
