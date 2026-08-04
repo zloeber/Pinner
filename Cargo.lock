@@ -867,6 +867,7 @@ name = "pinner-go"
 version = "0.1.0"
 dependencies = [
  "pinner-ecosystem",
+ "tempfile",
  "walkdir",
 ]
 

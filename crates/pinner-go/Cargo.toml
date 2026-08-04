@@ -8,3 +8,6 @@ repository.workspace = true
 [dependencies]
 pinner-ecosystem = { workspace = true }
 walkdir = { workspace = true }
+
+[dev-dependencies]
+tempfile = { workspace = true }
