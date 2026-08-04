@@ -2,7 +2,13 @@ use pinner_cargo::CargoEcosystem;
 use pinner_ecosystem::{Ecosystem, EcosystemCtx, EcosystemKind, EvidenceKind, Manifest};
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::sync::{Mutex, OnceLock};
 use tempfile::tempdir;
+
+fn env_lock() -> &'static Mutex<()> {
+    static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+    LOCK.get_or_init(|| Mutex::new(()))
+}
 
 fn fixture() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../tests/fixtures/cargo-floating")
@@ -81,6 +87,7 @@ fn resolves_from_cargo_lock_and_rewrites_exact() {
 
 #[test]
 fn resolves_from_pinner_cargo_resolve_map() {
+    let _guard = env_lock().lock().unwrap();
     let dir = tempdir().unwrap();
     fs::write(
         dir.path().join("Cargo.toml"),
@@ -95,7 +102,7 @@ serde = "1"
     )
     .unwrap();
 
-    // SAFETY: test-only env seam; serial within this process for this var.
+    // SAFETY: test-only env seam; held behind env_lock.
     unsafe {
         std::env::set_var("PINNER_CARGO_RESOLVE_MAP", "serde=1:1.0.210");
     }
@@ -118,6 +125,8 @@ serde = "1"
 
 #[test]
 fn ignores_parent_cargo_lock_outside_repo() {
+    let _guard = env_lock().lock().unwrap();
+    // SAFETY: clear map so a parallel env-map test cannot make resolve succeed.
     unsafe {
         std::env::remove_var("PINNER_CARGO_RESOLVE_MAP");
     }
