@@ -26,10 +26,14 @@ jobs:
     steps:
       # Checkout with the job token. Do NOT pass PAT_TOKEN here — an invalid or
       # empty PAT makes actions/checkout fail with a cryptic git auth error.
+      # persist-credentials: false so GITHUB_TOKEN is not left in
+      # http.*.extraheader (that header beats URL-embedded PAT credentials and
+      # would make the tag push look like GITHUB_TOKEN → release.yml never runs).
       - name: Checkout code
         uses: actions/checkout@v5
         with:
           fetch-depth: 0
+          persist-credentials: false
 
       - name: Require PAT_TOKEN
         env:
@@ -124,7 +128,8 @@ jobs:
           fi
 
       # PAT is required so the tag push can trigger release.yml (GITHUB_TOKEN
-      # pushes do not chain workflows by default).
+      # pushes do not chain workflows by default). Also clear any leftover
+      # checkout auth header so the PAT in the push URL is what GitHub sees.
       - name: Create and push tag
         if: >-
           steps.version.outputs.should_release == 'true' &&
@@ -135,7 +140,10 @@ jobs:
           set -euo pipefail
           TAG="v${{ steps.version.outputs.new_version }}"
           git tag -a "$TAG" -m "Release $TAG"
-          if ! git push "https://x-access-token:${PAT_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" "refs/tags/${TAG}"; then
+          git config --local --unset-all http.https://github.com/.extraheader 2>/dev/null || true
+          if ! git -c "http.https://github.com/.extraheader=" \
+            push "https://x-access-token:${PAT_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" \
+            "refs/tags/${TAG}"; then
             echo "::error::Failed to push tag with PAT_TOKEN. Re-seed a valid classic PAT (contents:write) via secretzero agent sync --web — expired/revoked/wrong-scope tokens fail here."
             exit 1
           fi
