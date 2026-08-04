@@ -57,14 +57,15 @@ fn resolve_one(
         });
     }
 
-    if let Some(pinned) = resolve_map_lookup(map, &finding.name, &finding.requested) {
-        return Ok(registry_pin(finding, pinned, EvidenceKind::Registry));
-    }
-
+    // Native provider lock before env map so `.terraform.lock.hcl` wins when both exist.
     if is_provider_finding(finding)
         && let Some(pinned) = resolve_from_terraform_lock(ctx.repo, finding)
     {
         return Ok(registry_pin(finding, pinned, EvidenceKind::NativeLock));
+    }
+
+    if let Some(pinned) = resolve_map_lookup(map, &finding.name, &finding.requested) {
+        return Ok(registry_pin(finding, pinned, EvidenceKind::Registry));
     }
 
     if ctx.offline {

@@ -292,9 +292,23 @@ fn composed_repo_tag_image(map: &serde_yaml::Mapping) -> Option<String> {
 
 fn apply_repo_tag_pin(map: &mut serde_yaml::Mapping, pinned: &str) {
     let (repo, digest) = split_name_digest(pinned);
+    // When registry is a separate key (Bitnami-style), keep repository as the
+    // path-only segment so templates that join registry/repository do not double the host.
+    let repository = match map
+        .get(Value::String("registry".into()))
+        .and_then(|v| v.as_str())
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+    {
+        Some(registry) => {
+            let prefix = format!("{registry}/");
+            repo.strip_prefix(&prefix).unwrap_or(repo)
+        }
+        None => repo,
+    };
     map.insert(
         Value::String("repository".into()),
-        Value::String(repo.to_string()),
+        Value::String(repository.to_string()),
     );
     map.insert(
         Value::String("digest".into()),

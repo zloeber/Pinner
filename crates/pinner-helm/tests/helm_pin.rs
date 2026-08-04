@@ -343,6 +343,91 @@ fn resolve_and_rewrite_via_env_map() {
 }
 
 #[test]
+fn rewrite_registry_repository_tag_keeps_fields_separate() {
+    let _guard = env_lock().lock().unwrap();
+    let digest =
+        "sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd";
+    let pinned = format!("docker.io/bitnami/nginx@{digest}");
+    unsafe {
+        std::env::set_var(
+            "PINNER_HELM_RESOLVE_MAP",
+            format!("docker.io/bitnami/nginx@docker.io/bitnami/nginx:latest={pinned}"),
+        );
+    }
+
+    let tmp = tempfile::tempdir().unwrap();
+    std::fs::write(
+        tmp.path().join("values.yaml"),
+        r#"image:
+  registry: docker.io
+  repository: bitnami/nginx
+  tag: latest
+"#,
+    )
+    .unwrap();
+
+    let eco = HelmEcosystem;
+    let ctx = ctx(tmp.path());
+    let manifests = eco.discover(tmp.path()).unwrap();
+    let findings: Vec<_> = manifests
+        .iter()
+        .flat_map(|m| eco.extract(m, &ctx).unwrap())
+        .filter(|f| f.is_floating)
+        .collect();
+    assert!(
+        findings.iter().any(|f| {
+            f.requested == "docker.io/bitnami/nginx:latest" && f.name == "docker.io/bitnami/nginx"
+        }),
+        "registry+repository+tag extract: {findings:?}"
+    );
+
+    let pins = eco.resolve(&findings, &ctx).unwrap();
+    let values = manifests
+        .iter()
+        .find(|m| m.path.file_name().and_then(|n| n.to_str()) == Some("values.yaml"))
+        .expect("values.yaml");
+    let rw = eco
+        .rewrite(values, &pins)
+        .unwrap()
+        .expect("values.yaml rewrite");
+    let value: serde_yaml::Value = serde_yaml::from_str(&rw.new_contents).unwrap();
+    let image = value.get("image").expect("image");
+    assert_eq!(
+        image.get("registry").and_then(|v| v.as_str()),
+        Some("docker.io"),
+        "registry must stay set for Bitnami-style join:\n{}",
+        rw.new_contents
+    );
+    assert_eq!(
+        image.get("repository").and_then(|v| v.as_str()),
+        Some("bitnami/nginx"),
+        "repository must stay repo-only (not registry/repo) so join does not double host:\n{}",
+        rw.new_contents
+    );
+    assert_eq!(
+        image.get("digest").and_then(|v| v.as_str()),
+        Some(digest),
+        "digest missing:\n{}",
+        rw.new_contents
+    );
+    assert_eq!(
+        image.get("tag").and_then(|v| v.as_str()).unwrap_or(""),
+        "",
+        "tag should be cleared when digest is set:\n{}",
+        rw.new_contents
+    );
+    assert!(
+        !rw.new_contents.contains("docker.io/docker.io"),
+        "doubled registry host:\n{}",
+        rw.new_contents
+    );
+
+    unsafe {
+        std::env::remove_var("PINNER_HELM_RESOLVE_MAP");
+    }
+}
+
+#[test]
 fn rewrite_matches_same_chart_name_by_repository() {
     let _guard = env_lock().lock().unwrap();
     unsafe {
