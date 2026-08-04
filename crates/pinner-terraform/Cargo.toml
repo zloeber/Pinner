@@ -10,6 +10,7 @@ hcl-edit = { workspace = true }
 pinner-ecosystem = { workspace = true }
 pinner-iac-common = { workspace = true }
 pinner-toolchain = { workspace = true }
+serde_json = { workspace = true }
 walkdir = { workspace = true }
 
 [dev-dependencies]

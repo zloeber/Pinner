@@ -18,7 +18,7 @@ pub(crate) fn discover(repo: &Path) -> Result<Vec<Manifest>, EcosystemError> {
             continue;
         }
         let path = entry.path();
-        if is_chart_file(path) || is_gitops_manifest(path) {
+        if is_chart_file(path) || is_values_file(path) || is_gitops_manifest(path) {
             paths.insert(path.to_path_buf());
         }
     }
@@ -39,6 +39,21 @@ fn is_chart_file(path: &Path) -> bool {
     )
 }
 
+/// Helm values files: `values.yaml`, `values.yml`, `values-*.yaml`, etc.
+pub(crate) fn is_values_file(path: &Path) -> bool {
+    let Some(name) = path.file_name().and_then(|n| n.to_str()) else {
+        return false;
+    };
+    let lower = name.to_ascii_lowercase();
+    if !(lower.ends_with(".yaml") || lower.ends_with(".yml")) {
+        return false;
+    }
+    lower == "values.yaml"
+        || lower == "values.yml"
+        || lower.starts_with("values.")
+        || lower.starts_with("values-")
+}
+
 fn is_yaml_file(path: &Path) -> bool {
     matches!(
         path.extension().and_then(|e| e.to_str()),
@@ -49,14 +64,7 @@ fn is_yaml_file(path: &Path) -> bool {
 /// Flux `HelmRelease` / Argo CD `Application` matched by document `kind`.
 /// Unreadable or invalid YAML is skipped (not a hard discover error).
 fn is_gitops_manifest(path: &Path) -> bool {
-    if is_chart_file(path) || !is_yaml_file(path) {
-        return false;
-    }
-    // values.yaml is not a chart/GitOps CRD surface for this ecosystem.
-    if matches!(
-        path.file_name().and_then(|n| n.to_str()),
-        Some("values.yaml") | Some("values.yml")
-    ) {
+    if is_chart_file(path) || is_values_file(path) || !is_yaml_file(path) {
         return false;
     }
 
@@ -85,7 +93,7 @@ fn should_skip(path: &Path) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use super::{is_chart_file, should_skip};
+    use super::{is_chart_file, is_values_file, should_skip};
     use std::path::Path;
 
     #[test]
@@ -94,6 +102,16 @@ mod tests {
         assert!(is_chart_file(Path::new("charts/app/Chart.yml")));
         assert!(!is_chart_file(Path::new("values.yaml")));
         assert!(!is_chart_file(Path::new("chart.yaml")));
+    }
+
+    #[test]
+    fn detects_values_filenames() {
+        assert!(is_values_file(Path::new("values.yaml")));
+        assert!(is_values_file(Path::new("values.yml")));
+        assert!(is_values_file(Path::new("values-prod.yaml")));
+        assert!(is_values_file(Path::new("values.staging.yml")));
+        assert!(!is_values_file(Path::new("Chart.yaml")));
+        assert!(!is_values_file(Path::new("my-values.yaml")));
     }
 
     #[test]

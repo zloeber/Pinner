@@ -23,7 +23,7 @@ fn ctx(repo: &Path) -> EcosystemCtx<'_> {
 }
 
 #[test]
-fn discovers_chart_yaml_and_gitops_kinds_skips_values() {
+fn discovers_chart_yaml_gitops_and_values_files() {
     let repo = fixture_dir();
     let eco = HelmEcosystem;
     let manifests = eco.discover(&repo).unwrap();
@@ -36,8 +36,49 @@ fn discovers_chart_yaml_and_gitops_kinds_skips_values() {
     assert!(names.contains(&"helmrelease.yaml"), "names={names:?}");
     assert!(names.contains(&"application.yaml"), "names={names:?}");
     assert!(
-        !names.contains(&"values.yaml"),
-        "values.yaml must not be a Helm manifest: {names:?}"
+        names.contains(&"values.yaml"),
+        "values.yaml must be discovered for image pins: {names:?}"
+    );
+    assert!(
+        names.contains(&"values-prod.yaml"),
+        "values*.yaml must be discovered: {names:?}"
+    );
+}
+
+#[test]
+fn extracts_floating_images_from_values_yaml() {
+    let repo = fixture_dir();
+    let eco = HelmEcosystem;
+    let manifests = eco.discover(&repo).unwrap();
+    let ctx = ctx(&repo);
+
+    let mut findings = Vec::new();
+    for m in &manifests {
+        let name = m.path.file_name().and_then(|n| n.to_str()).unwrap_or("");
+        if name.starts_with("values") {
+            findings.extend(eco.extract(m, &ctx).unwrap());
+        }
+    }
+
+    assert!(
+        findings.iter().any(|f| {
+            f.is_floating
+                && f.name == "ghcr.io/example/app"
+                && f.requested == "ghcr.io/example/app:latest"
+        }),
+        "repository+tag image: {findings:?}"
+    );
+    assert!(
+        findings
+            .iter()
+            .any(|f| { f.is_floating && f.name == "nginx" && f.requested == "nginx:latest" }),
+        "string image under sidecar: {findings:?}"
+    );
+    assert!(
+        findings
+            .iter()
+            .any(|f| { f.is_floating && f.name == "redis" && f.requested == "redis:latest" }),
+        "values-prod.yaml string image: {findings:?}"
     );
 }
 
@@ -125,7 +166,7 @@ fn resolve_and_rewrite_via_env_map() {
     unsafe {
         std::env::set_var(
             "PINNER_HELM_RESOLVE_MAP",
-            "redis@*=18.6.1,postgresql@^12.1.0=12.5.8,nginx@latest=15.5.0,ingress-nginx@=4.10.0,podinfo@>=6.0.0=6.5.4,argo-cd@~2.4.0=2.4.17",
+            "redis@*=18.6.1,postgresql@^12.1.0=12.5.8,nginx@latest=15.5.0,ingress-nginx@=4.10.0,podinfo@>=6.0.0=6.5.4,argo-cd@~2.4.0=2.4.17,ghcr.io/example/app@ghcr.io/example/app:latest=ghcr.io/example/app@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa,nginx@nginx:latest=nginx@sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb,redis@redis:latest=redis@sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
         );
     }
 
@@ -136,10 +177,10 @@ fn resolve_and_rewrite_via_env_map() {
         "helmrelease.yaml",
         "application.yaml",
         "values.yaml",
+        "values-prod.yaml",
     ] {
         std::fs::copy(fixture.join(name), tmp.path().join(name)).unwrap();
     }
-    let values_before = std::fs::read_to_string(tmp.path().join("values.yaml")).unwrap();
 
     let eco = HelmEcosystem;
     let ctx = ctx(tmp.path());
@@ -175,7 +216,18 @@ fn resolve_and_rewrite_via_env_map() {
         pins.iter()
             .any(|p| p.name == "argo-cd" && p.pinned == "2.4.17")
     );
-    let redis = pins.iter().find(|p| p.name == "redis").expect("redis pin");
+    assert!(
+        pins.iter().any(|p| {
+            p.name == "ghcr.io/example/app"
+                && p.pinned
+                    == "ghcr.io/example/app@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        }),
+        "values image pin missing: {pins:?}"
+    );
+    let redis = pins
+        .iter()
+        .find(|p| p.name == "redis" && p.pinned == "18.6.1")
+        .expect("redis chart pin");
     assert_eq!(
         redis.metadata.get("chart").and_then(|v| v.as_str()),
         Some("redis")
@@ -216,7 +268,6 @@ fn resolve_and_rewrite_via_env_map() {
         "exact dep preserved:\n{}",
         rw.new_contents
     );
-    // Write rewrite so we can also assert values untouched after full pass.
     std::fs::write(&rw.path, &rw.new_contents).unwrap();
 
     let hr = manifests
@@ -257,10 +308,117 @@ fn resolve_and_rewrite_via_env_map() {
         rw.new_contents
     );
 
-    let values_after = std::fs::read_to_string(tmp.path().join("values.yaml")).unwrap();
+    let values = manifests
+        .iter()
+        .find(|m| m.path.file_name().and_then(|n| n.to_str()) == Some("values.yaml"))
+        .expect("values.yaml");
+    let values_pins: Vec<_> = pins
+        .iter()
+        .filter(|p| p.path == Path::new("values.yaml"))
+        .cloned()
+        .collect();
+    let rw = eco
+        .rewrite(values, &values_pins)
+        .unwrap()
+        .expect("values.yaml rewrite");
+    assert!(
+        rw.new_contents.contains(
+            "ghcr.io/example/app@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        ) || (rw.new_contents.contains("sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa")
+            && rw.new_contents.contains("ghcr.io/example/app")),
+        "expected values repository+tag pin, got:\n{}",
+        rw.new_contents
+    );
+    assert!(
+        rw.new_contents.contains(
+            "nginx@sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+        ),
+        "expected values string image pin, got:\n{}",
+        rw.new_contents
+    );
+
+    unsafe {
+        std::env::remove_var("PINNER_HELM_RESOLVE_MAP");
+    }
+}
+
+#[test]
+fn rewrite_registry_repository_tag_keeps_fields_separate() {
+    let _guard = env_lock().lock().unwrap();
+    let digest = "sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd";
+    let pinned = format!("docker.io/bitnami/nginx@{digest}");
+    unsafe {
+        std::env::set_var(
+            "PINNER_HELM_RESOLVE_MAP",
+            format!("docker.io/bitnami/nginx@docker.io/bitnami/nginx:latest={pinned}"),
+        );
+    }
+
+    let tmp = tempfile::tempdir().unwrap();
+    std::fs::write(
+        tmp.path().join("values.yaml"),
+        r#"image:
+  registry: docker.io
+  repository: bitnami/nginx
+  tag: latest
+"#,
+    )
+    .unwrap();
+
+    let eco = HelmEcosystem;
+    let ctx = ctx(tmp.path());
+    let manifests = eco.discover(tmp.path()).unwrap();
+    let findings: Vec<_> = manifests
+        .iter()
+        .flat_map(|m| eco.extract(m, &ctx).unwrap())
+        .filter(|f| f.is_floating)
+        .collect();
+    assert!(
+        findings.iter().any(|f| {
+            f.requested == "docker.io/bitnami/nginx:latest" && f.name == "docker.io/bitnami/nginx"
+        }),
+        "registry+repository+tag extract: {findings:?}"
+    );
+
+    let pins = eco.resolve(&findings, &ctx).unwrap();
+    let values = manifests
+        .iter()
+        .find(|m| m.path.file_name().and_then(|n| n.to_str()) == Some("values.yaml"))
+        .expect("values.yaml");
+    let rw = eco
+        .rewrite(values, &pins)
+        .unwrap()
+        .expect("values.yaml rewrite");
+    let value: serde_yaml::Value = serde_yaml::from_str(&rw.new_contents).unwrap();
+    let image = value.get("image").expect("image");
     assert_eq!(
-        values_before, values_after,
-        "values.yaml images must never be rewritten"
+        image.get("registry").and_then(|v| v.as_str()),
+        Some("docker.io"),
+        "registry must stay set for Bitnami-style join:\n{}",
+        rw.new_contents
+    );
+    assert_eq!(
+        image.get("repository").and_then(|v| v.as_str()),
+        Some("bitnami/nginx"),
+        "repository must stay repo-only (not registry/repo) so join does not double host:\n{}",
+        rw.new_contents
+    );
+    assert_eq!(
+        image.get("digest").and_then(|v| v.as_str()),
+        Some(digest),
+        "digest missing:\n{}",
+        rw.new_contents
+    );
+    assert_eq!(
+        image.get("tag").and_then(|v| v.as_str()).unwrap_or(""),
+        "",
+        "tag should be cleared when digest is set:\n{}",
+        rw.new_contents
+    );
+    assert!(
+        !rw.new_contents.contains("docker.io/docker.io"),
+        "doubled registry host:\n{}",
+        rw.new_contents
     );
 
     unsafe {

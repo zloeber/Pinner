@@ -47,6 +47,11 @@ struct EcosystemsSection {
     terraform: Option<bool>,
     helm: Option<bool>,
     k8s: Option<bool>,
+    cargo: Option<bool>,
+    go: Option<bool>,
+    ruby: Option<bool>,
+    gitlab: Option<bool>,
+    azure: Option<bool>,
 }
 
 #[derive(Debug, Default, Deserialize)]
@@ -69,6 +74,9 @@ impl Policy {
                 EcosystemKind::Docker,
                 EcosystemKind::Actions,
                 EcosystemKind::Terraform,
+                EcosystemKind::Cargo,
+                EcosystemKind::Go,
+                EcosystemKind::Ruby,
             ],
             vec![
                 "**/node_modules/**".to_string(),
@@ -122,6 +130,11 @@ impl Policy {
             );
             apply_ecosystem(&mut self.enabled, EcosystemKind::Helm, ecosystems.helm);
             apply_ecosystem(&mut self.enabled, EcosystemKind::K8s, ecosystems.k8s);
+            apply_ecosystem(&mut self.enabled, EcosystemKind::Cargo, ecosystems.cargo);
+            apply_ecosystem(&mut self.enabled, EcosystemKind::Go, ecosystems.go);
+            apply_ecosystem(&mut self.enabled, EcosystemKind::Ruby, ecosystems.ruby);
+            apply_ecosystem(&mut self.enabled, EcosystemKind::Gitlab, ecosystems.gitlab);
+            apply_ecosystem(&mut self.enabled, EcosystemKind::Azure, ecosystems.azure);
         }
 
         if let Some(ignore) = file.ignore {

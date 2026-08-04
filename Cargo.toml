@@ -14,6 +14,12 @@ members = [
   "crates/pinner-terraform",
   "crates/pinner-helm",
   "crates/pinner-k8s",
+  "crates/pinner-cargo",
+  "crates/pinner-go",
+  "crates/pinner-ruby",
+  "crates/pinner-gitlab",
+  "crates/pinner-azure",
+  "crates/pinner-ui",
 ]
 
 [workspace.package]
@@ -50,3 +56,11 @@ pinner-iac-common = { path = "crates/pinner-iac-common" }
 pinner-terraform = { path = "crates/pinner-terraform" }
 pinner-helm = { path = "crates/pinner-helm" }
 pinner-k8s = { path = "crates/pinner-k8s" }
+pinner-cargo = { path = "crates/pinner-cargo" }
+pinner-go = { path = "crates/pinner-go" }
+pinner-ruby = { path = "crates/pinner-ruby" }
+pinner-gitlab = { path = "crates/pinner-gitlab" }
+pinner-azure = { path = "crates/pinner-azure" }
+pinner-ui = { path = "crates/pinner-ui" }
+ratatui = "0.30"
+crossterm = "0.29"

@@ -1,0 +1,14 @@
+image: node:latest
+
+include:
+  - project: 'group/ci-templates'
+    file: '/template.yml'
+    ref: main
+
+stages:
+  - test
+
+test:
+  stage: test
+  script:
+    - npm test

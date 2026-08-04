@@ -24,3 +24,19 @@ fn ecosystem_kind_terraform_serializes_as_lowercase() {
     let v = serde_json::to_value(EcosystemKind::Terraform).unwrap();
     assert_eq!(v, "terraform");
 }
+
+#[test]
+fn ecosystem_kind_new_variants_roundtrip() {
+    for (kind, expected) in [
+        (EcosystemKind::Cargo, "cargo"),
+        (EcosystemKind::Go, "go"),
+        (EcosystemKind::Ruby, "ruby"),
+        (EcosystemKind::Gitlab, "gitlab"),
+        (EcosystemKind::Azure, "azure"),
+    ] {
+        let v = serde_json::to_value(kind).unwrap();
+        assert_eq!(v, expected);
+        let parsed: EcosystemKind = serde_json::from_value(v).unwrap();
+        assert_eq!(parsed, kind);
+    }
+}

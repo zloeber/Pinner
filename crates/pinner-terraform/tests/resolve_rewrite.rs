@@ -1,13 +1,20 @@
 use std::path::{Path, PathBuf};
+use std::sync::{Mutex, OnceLock};
 
-use pinner_ecosystem::{Ecosystem, EcosystemCtx};
+use pinner_ecosystem::{Ecosystem, EcosystemCtx, EvidenceKind};
 use pinner_terraform::TerraformEcosystem;
+
+fn env_lock() -> &'static Mutex<()> {
+    static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+    LOCK.get_or_init(|| Mutex::new(()))
+}
 
 const GIT_SHA: &str = "11bd71901bbe5b1630ceea73d27597364c9af683";
 const GIT_SOURCE: &str = "git::https://example.com/org/mod.git?ref=main";
 
 #[test]
 fn resolve_and_rewrite_via_env_map() {
+    let _guard = env_lock().lock().unwrap();
     // SAFETY: test-only env seam for deterministic resolve.
     unsafe {
         std::env::set_var(
@@ -95,4 +102,79 @@ fn resolve_and_rewrite_via_env_map() {
         "expected exact provider version, got:\n{}",
         rw.new_contents
     );
+
+    unsafe {
+        std::env::remove_var("PINNER_TERRAFORM_RESOLVE_MAP");
+    }
+}
+
+#[test]
+fn native_lock_wins_over_env_resolve_map() {
+    let _guard = env_lock().lock().unwrap();
+    // SAFETY: map must lose to .terraform.lock.hcl when both are present.
+    unsafe {
+        std::env::set_var(
+            "PINNER_TERRAFORM_RESOLVE_MAP",
+            "hashicorp/aws@~> 5.0=5.100.0",
+        );
+    }
+
+    let tmp = tempfile::tempdir().unwrap();
+    std::fs::write(
+        tmp.path().join("providers.tf"),
+        r#"terraform {
+  required_providers {
+    aws = {
+      source  = "hashicorp/aws"
+      version = "~> 5.0"
+    }
+  }
+}
+"#,
+    )
+    .unwrap();
+    std::fs::write(
+        tmp.path().join(".terraform.lock.hcl"),
+        r#"provider "registry.terraform.io/hashicorp/aws" {
+  version     = "5.42.0"
+  constraints = "~> 5.0"
+  hashes = [
+    "h1:placeholder",
+  ]
+}
+"#,
+    )
+    .unwrap();
+
+    let eco = TerraformEcosystem;
+    let ctx = EcosystemCtx {
+        repo: tmp.path(),
+        lock_pins: &[],
+        offline: true,
+        pin_exact_ranges: true,
+    };
+    let manifests = eco.discover(tmp.path()).unwrap();
+    let findings: Vec<_> = manifests
+        .iter()
+        .flat_map(|m| eco.extract(m, &ctx).unwrap())
+        .filter(|f| f.is_floating)
+        .collect();
+    let pins = eco.resolve(&findings, &ctx).unwrap();
+    let aws = pins
+        .iter()
+        .find(|p| p.name == "hashicorp/aws")
+        .expect("aws pin");
+    assert_eq!(
+        aws.pinned, "5.42.0",
+        "native .terraform.lock.hcl must win over PINNER_TERRAFORM_RESOLVE_MAP; pin={aws:?}"
+    );
+    assert_eq!(
+        aws.evidence,
+        EvidenceKind::NativeLock,
+        "expected NativeLock evidence; pin={aws:?}"
+    );
+
+    unsafe {
+        std::env::remove_var("PINNER_TERRAFORM_RESOLVE_MAP");
+    }
 }

@@ -18,4 +18,6 @@ pub enum CoreError {
     Toml(#[from] toml::de::Error),
     #[error("glob error: {0}")]
     Glob(#[from] globset::Error),
+    #[error("walkthrough decisions length {decisions} does not match pins length {pins}")]
+    WalkthroughLengthMismatch { pins: usize, decisions: usize },
 }

@@ -1,0 +1,12 @@
+[package]
+name = "pinner-ui"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+crossterm = { workspace = true }
+pinner-core = { workspace = true }
+pinner-ecosystem = { workspace = true }
+ratatui = { workspace = true }

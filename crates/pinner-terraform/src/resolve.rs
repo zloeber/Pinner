@@ -7,8 +7,11 @@ use hcl_edit::structure::Body;
 use pinner_ecosystem::{
     EcosystemCtx, EcosystemError, EcosystemKind, EvidenceKind, Finding, Pin, absolute_in_repo,
 };
-use pinner_iac_common::{parse_resolve_map, resolve_git_sha, resolve_map_lookup};
+use pinner_iac_common::{
+    http_get, parse_resolve_map, resolve_git_sha, resolve_map_lookup, select_matching_version,
+};
 use pinner_toolchain::{CommandRunner, RealCommandRunner};
+use serde_json::Value;
 
 use crate::TerraformEcosystem;
 use crate::git_source::{git_pinned_source, is_git_or_http_requested};
@@ -21,9 +24,11 @@ impl TerraformEcosystem {
     ) -> Result<Vec<Pin>, EcosystemError> {
         let runner = RealCommandRunner;
         let map = resolve_map_from_env();
+        let mut sources = ModuleSourceQueue::load(ctx.repo, findings)?;
         let mut pins = Vec::with_capacity(findings.len());
         for finding in findings {
-            pins.push(resolve_one(&runner, finding, ctx, &map)?);
+            let module_source = sources.take(finding);
+            pins.push(resolve_one(&runner, finding, ctx, &map, module_source)?);
         }
         Ok(pins)
     }
@@ -34,6 +39,7 @@ fn resolve_one(
     finding: &Finding,
     ctx: &EcosystemCtx<'_>,
     map: &HashMap<String, String>,
+    module_source: String,
 ) -> Result<Pin, EcosystemError> {
     if let Some(lock) = ctx.lock_pins.iter().find(|pin| {
         pin.ecosystem == EcosystemKind::Terraform
@@ -51,14 +57,15 @@ fn resolve_one(
         });
     }
 
-    if let Some(pinned) = resolve_map_lookup(map, &finding.name, &finding.requested) {
-        return Ok(registry_pin(finding, pinned, EvidenceKind::Registry));
-    }
-
+    // Native provider lock before env map so `.terraform.lock.hcl` wins when both exist.
     if is_provider_finding(finding)
         && let Some(pinned) = resolve_from_terraform_lock(ctx.repo, finding)
     {
         return Ok(registry_pin(finding, pinned, EvidenceKind::NativeLock));
+    }
+
+    if let Some(pinned) = resolve_map_lookup(map, &finding.name, &finding.requested) {
+        return Ok(registry_pin(finding, pinned, EvidenceKind::Registry));
     }
 
     if ctx.offline {
@@ -85,11 +92,25 @@ fn resolve_one(
         return Ok(registry_pin(finding, pinned, EvidenceKind::Tool));
     }
 
-    Err(EcosystemError::Resolve {
+    let pinned = if is_provider_finding(finding) {
+        resolve_terraform_registry_provider(&finding.name, &finding.requested, &|url| {
+            http_get(runner, url)
+        })
+    } else {
+        let source = if module_source.is_empty() {
+            finding.name.clone()
+        } else {
+            module_source
+        };
+        resolve_terraform_registry_module(&source, &finding.requested, &|url| http_get(runner, url))
+    }
+    .map_err(|hint| EcosystemError::Resolve {
         name: finding.name.clone(),
         requested: finding.requested.clone(),
-        hint: "set PINNER_TERRAFORM_RESOLVE_MAP (name@requested=pinned) for offline/tests, or enable network registry resolve".into(),
-    })
+        hint,
+    })?;
+
+    Ok(registry_pin(finding, pinned, EvidenceKind::Registry))
 }
 
 fn registry_pin(finding: &Finding, pinned: String, evidence: EvidenceKind) -> Pin {
@@ -196,9 +217,181 @@ fn attr_str(body: &Body, key: &str) -> Option<String> {
         .and_then(|attr| attr.value.as_str().map(str::to_string))
 }
 
+/// Resolve a Terraform module version from the public registry API.
+///
+/// `source` is `namespace/name/provider` (e.g. `terraform-aws-modules/vpc/aws`).
+/// Prefer `PINNER_TERRAFORM_RESOLVE_MAP` offline; inject `http_get_fn` in unit tests.
+pub fn resolve_terraform_registry_module<F>(
+    source: &str,
+    requested: &str,
+    http_get_fn: &F,
+) -> Result<String, String>
+where
+    F: Fn(&str) -> Result<String, String>,
+{
+    let path = normalize_module_source(source)?;
+    let url = format!("https://registry.terraform.io/v1/modules/{path}/versions");
+    let body = http_get_fn(&url)?;
+    let versions = parse_module_versions(&body)?;
+    select_matching_version(&versions, requested).ok_or_else(|| {
+        format!(
+            "no terraform module version for {source} matching {requested:?}; set PINNER_TERRAFORM_RESOLVE_MAP"
+        )
+    })
+}
+
+/// Resolve a Terraform provider version from the public registry API.
+///
+/// `name` is `namespace/type` (e.g. `hashicorp/aws`).
+pub fn resolve_terraform_registry_provider<F>(
+    name: &str,
+    requested: &str,
+    http_get_fn: &F,
+) -> Result<String, String>
+where
+    F: Fn(&str) -> Result<String, String>,
+{
+    let path = normalize_provider_name(name)?;
+    let url = format!("https://registry.terraform.io/v1/providers/{path}/versions");
+    let body = http_get_fn(&url)?;
+    let versions = parse_provider_versions(&body)?;
+    select_matching_version(&versions, requested).ok_or_else(|| {
+        format!(
+            "no terraform provider version for {name} matching {requested:?}; set PINNER_TERRAFORM_RESOLVE_MAP"
+        )
+    })
+}
+
+fn normalize_module_source(source: &str) -> Result<String, String> {
+    let source = source.trim().trim_start_matches("registry.terraform.io/");
+    let parts: Vec<_> = source.split('/').filter(|p| !p.is_empty()).collect();
+    if parts.len() != 3 {
+        return Err(format!(
+            "expected module source namespace/name/provider, got {source:?}; set PINNER_TERRAFORM_RESOLVE_MAP"
+        ));
+    }
+    Ok(parts.join("/"))
+}
+
+fn normalize_provider_name(name: &str) -> Result<String, String> {
+    let name = name.trim().trim_start_matches("registry.terraform.io/");
+    let parts: Vec<_> = name.split('/').filter(|p| !p.is_empty()).collect();
+    if parts.len() != 2 {
+        return Err(format!(
+            "expected provider namespace/type, got {name:?}; set PINNER_TERRAFORM_RESOLVE_MAP"
+        ));
+    }
+    Ok(parts.join("/"))
+}
+
+fn parse_module_versions(body: &str) -> Result<Vec<String>, String> {
+    let value: Value =
+        serde_json::from_str(body).map_err(|e| format!("terraform module versions JSON: {e}"))?;
+    let modules = value
+        .get("modules")
+        .and_then(|m| m.as_array())
+        .ok_or_else(|| "terraform module versions missing modules[]".to_string())?;
+    let mut versions = Vec::new();
+    for module in modules {
+        let Some(vs) = module.get("versions").and_then(|v| v.as_array()) else {
+            continue;
+        };
+        for v in vs {
+            if let Some(s) = v.get("version").and_then(|x| x.as_str()) {
+                versions.push(s.to_string());
+            }
+        }
+    }
+    if versions.is_empty() {
+        return Err("terraform module versions list empty".into());
+    }
+    Ok(versions)
+}
+
+fn parse_provider_versions(body: &str) -> Result<Vec<String>, String> {
+    let value: Value =
+        serde_json::from_str(body).map_err(|e| format!("terraform provider versions JSON: {e}"))?;
+    let vs = value
+        .get("versions")
+        .and_then(|v| v.as_array())
+        .ok_or_else(|| "terraform provider versions missing versions[]".to_string())?;
+    let mut versions = Vec::new();
+    for v in vs {
+        if let Some(s) = v.get("version").and_then(|x| x.as_str()) {
+            versions.push(s.to_string());
+        }
+    }
+    if versions.is_empty() {
+        return Err("terraform provider versions list empty".into());
+    }
+    Ok(versions)
+}
+
+/// Module block label → registry `source` for HTTP resolve.
+struct ModuleSourceQueue {
+    by_path: HashMap<PathBuf, Vec<(String, String, String)>>,
+}
+
+impl ModuleSourceQueue {
+    fn load(repo: &Path, findings: &[Finding]) -> Result<Self, EcosystemError> {
+        let mut by_path = HashMap::new();
+        let mut seen = std::collections::HashSet::new();
+        for finding in findings {
+            if is_provider_finding(finding) || is_git_or_http_requested(&finding.requested) {
+                continue;
+            }
+            if !seen.insert(finding.path.clone()) {
+                continue;
+            }
+            let abs = absolute_in_repo(repo, &finding.path);
+            let rows = load_module_sources(&abs)?;
+            by_path.insert(finding.path.clone(), rows);
+        }
+        Ok(Self { by_path })
+    }
+
+    fn take(&mut self, finding: &Finding) -> String {
+        let Some(rows) = self.by_path.get_mut(&finding.path) else {
+            return String::new();
+        };
+        if let Some(i) = rows.iter().position(|(name, requested, _)| {
+            name == &finding.name && requested == &finding.requested
+        }) {
+            return rows.remove(i).2;
+        }
+        String::new()
+    }
+}
+
+fn load_module_sources(path: &Path) -> Result<Vec<(String, String, String)>, EcosystemError> {
+    let contents = std::fs::read_to_string(path)?;
+    let body = Body::from_str(&contents).map_err(|e| EcosystemError::Parse {
+        path: path.to_path_buf(),
+        message: e.to_string(),
+    })?;
+    let mut rows = Vec::new();
+    for block in body.get_blocks("module") {
+        let Some(label) = block.labels.first().map(|l| l.as_str().to_string()) else {
+            continue;
+        };
+        let Some(source) = attr_str(&block.body, "source") else {
+            continue;
+        };
+        if source.starts_with('.') || source.starts_with('/') || is_git_or_http_requested(&source) {
+            continue;
+        }
+        let requested = attr_str(&block.body, "version").unwrap_or_default();
+        rows.push((label, requested, source));
+    }
+    Ok(rows)
+}
+
 #[cfg(test)]
 mod tests {
-    use super::{parse_git_source, provider_label_matches};
+    use super::{
+        normalize_module_source, parse_git_source, parse_module_versions, provider_label_matches,
+        resolve_terraform_registry_module,
+    };
 
     #[test]
     fn parse_git_source_strips_prefix_and_query() {
@@ -219,5 +412,31 @@ mod tests {
             "registry.terraform.io/hashicorp/azurerm",
             "hashicorp/aws"
         ));
+    }
+
+    #[test]
+    fn normalize_module_source_strips_host() {
+        assert_eq!(
+            normalize_module_source("registry.terraform.io/terraform-aws-modules/vpc/aws").unwrap(),
+            "terraform-aws-modules/vpc/aws"
+        );
+    }
+
+    #[test]
+    fn parse_module_versions_json() {
+        let body = r#"{"modules":[{"versions":[{"version":"1.0.0"},{"version":"1.1.0"}]}]}"#;
+        assert_eq!(
+            parse_module_versions(body).unwrap(),
+            vec!["1.0.0".to_string(), "1.1.0".to_string()]
+        );
+    }
+
+    #[test]
+    fn resolve_module_with_fixture_http() {
+        let body = r#"{"modules":[{"versions":[{"version":"5.0.0"},{"version":"5.2.0"}]}]}"#;
+        let v =
+            resolve_terraform_registry_module("ns/name/prov", "~> 5.0", &|_| Ok(body.to_string()))
+                .unwrap();
+        assert_eq!(v, "5.2.0");
     }
 }

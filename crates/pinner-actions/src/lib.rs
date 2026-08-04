@@ -9,7 +9,7 @@ use pinner_ecosystem::{
     Ecosystem, EcosystemCtx, EcosystemError, EcosystemKind, Finding, Manifest, Pin, Rewrite,
 };
 
-/// GitHub Actions ecosystem: pin floating `uses:` refs to commit SHAs.
+/// GitHub Actions ecosystem: pin floating `uses:` refs and job container/service images.
 #[derive(Debug, Default, Clone, Copy)]
 pub struct ActionsEcosystem;
 

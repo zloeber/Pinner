@@ -15,7 +15,7 @@ if [[ -z "$cmd" ]]; then
   exit 0
 fi
 
-if [[ ! "$cmd" =~ (^|[[:space:];|&])git[[:space:]]+push([[:space:]]|$) ]]; then
+if [[ ! "$cmd" =~ '(^|[[:space:];|&])git[[:space:]]+push([[:space:]]|$)' ]]; then
   print -r -- '{"permission":"allow"}'
   exit 0
 fi
@@ -27,10 +27,10 @@ fi
 out="$(mktemp -t pinner-hook-ci)"
 set +e
 "$ROOT/scripts/ci-local" >"$out" 2>&1
-status=$?
+ci_status=$?
 set -e
 
-python3 - "$status" "$out" <<'PY'
+python3 - "$ci_status" "$out" <<'PY'
 import json, sys
 status = int(sys.argv[1])
 path = sys.argv[2]

@@ -23,7 +23,7 @@ Pinner already freezes mise, Node, Python, Docker, and GitHub Actions. This feat
 
 - Local Terraform module paths (`./`, `../`).
 - Terraform/OpenTofu CLI `required_version` (mise already covers tool versions).
-- Image pins inside Helm `values.yaml` (owned by the Kubernetes ecosystem when those images appear in workload manifests).
+- ~~Image pins inside Helm `values.yaml` (owned by the Kubernetes ecosystem when those images appear in workload manifests).~~ **Superseded (2026-08-04 expansion):** Helm **must** pin floating images in `values.yaml` / `values*.yaml` (see expansion design/plan Task 10). Workload manifests remain owned by the **k8s** ecosystem.
 - Scanning arbitrary CRDs for embedded images beyond the five core workload kinds.
 - Replacing Renovate/Dependabot or opening upgrade PRs.
 - Private registry auth UX beyond passing through existing env credentials (same as Docker/Actions today).

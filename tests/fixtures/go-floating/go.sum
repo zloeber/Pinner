@@ -1,0 +1,6 @@
+github.com/example/lib v1.2.3 h1:abcdefghijklmnopqrstuvwxyz0123456789ABCDEFGHI=
+github.com/example/lib v1.2.3/go.mod h1:zyxABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789abcd=
+github.com/stretchr/testify v1.9.0 h1:Hh6fyzlzhvb3Yz5yQv7t2WP+pa3qL2gQ2NqYyKRcZ5=
+github.com/stretchr/testify v1.9.0/go.mod h1:r2yeCPczbHYfS5OxrpFJN8Rh9FpROrpG1O5VJ6PtY=
+golang.org/x/sync v0.0.0-20181221193216-37e7f081c4d4 h1:YUQDlIRQBdzS36onGZqBG8JTRgTmIHvfgoJOh/R9k=
+golang.org/x/sync v0.0.0-20181221193216-37e7f081c4d4/go.mod h1:s0BrmyMEzo0AEodCixNdGySjL5WqvQbVaSeTjQE60=

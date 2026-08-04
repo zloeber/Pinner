@@ -4,6 +4,8 @@ use pinner_ecosystem::{EcosystemError, Manifest, Pin, Rewrite};
 use serde::Deserialize;
 use serde_yaml::Value;
 
+use crate::discover::is_values_file;
+
 pub(crate) fn rewrite(
     manifest: &Manifest,
     pins: &[Pin],
@@ -18,13 +20,10 @@ pub(crate) fn rewrite(
         .and_then(|n| n.to_str())
         .unwrap_or("");
 
-    // Never rewrite values.yaml (image pins belong to k8s).
-    if matches!(file_name, "values.yaml" | "values.yml") {
-        return Ok(None);
-    }
-
     let new_contents = if matches!(file_name, "Chart.yaml" | "Chart.yml") {
         rewrite_chart_yaml(&manifest.path, pins)?
+    } else if is_values_file(&manifest.path) {
+        rewrite_values_yaml(&manifest.path, pins)?
     } else {
         rewrite_gitops_yaml(&manifest.path, pins)?
     };
@@ -188,5 +187,140 @@ fn rewrite_gitops_doc(value: &mut Value, pins: &[Pin]) {
             }
         }
         _ => {}
+    }
+}
+
+fn rewrite_values_yaml(path: &Path, pins: &[Pin]) -> Result<String, EcosystemError> {
+    let contents = std::fs::read_to_string(path)?;
+    let by_requested: std::collections::HashMap<&str, &str> = pins
+        .iter()
+        .map(|p| (p.requested.as_str(), p.pinned.as_str()))
+        .collect();
+    let mut docs = Vec::new();
+
+    for doc in serde_yaml::Deserializer::from_str(&contents) {
+        let mut value = Value::deserialize(doc).map_err(|e| EcosystemError::Parse {
+            path: path.to_path_buf(),
+            message: e.to_string(),
+        })?;
+        rewrite_values_images(&mut value, &by_requested);
+        docs.push(value);
+    }
+
+    if docs.len() == 1 {
+        return serde_yaml::to_string(&docs[0]).map_err(|e| EcosystemError::Parse {
+            path: path.to_path_buf(),
+            message: e.to_string(),
+        });
+    }
+
+    let mut out = String::new();
+    for (i, doc) in docs.iter().enumerate() {
+        if i > 0 {
+            out.push_str("---\n");
+        }
+        let rendered = serde_yaml::to_string(doc).map_err(|e| EcosystemError::Parse {
+            path: path.to_path_buf(),
+            message: e.to_string(),
+        })?;
+        out.push_str(&rendered);
+    }
+    Ok(out)
+}
+
+fn rewrite_values_images(value: &mut Value, by_requested: &std::collections::HashMap<&str, &str>) {
+    match value {
+        Value::Mapping(map) => {
+            if let Some(current) = composed_repo_tag_image(map)
+                && let Some(pinned) = by_requested.get(current.as_str())
+            {
+                apply_repo_tag_pin(map, pinned);
+            }
+            // Collect keys first to allow mutation while iterating logically.
+            let keys: Vec<Value> = map.keys().cloned().collect();
+            for key in keys {
+                let Some(child) = map.get_mut(key.clone()) else {
+                    continue;
+                };
+                if let Some(key_str) = key.as_str()
+                    && key_str.eq_ignore_ascii_case("image")
+                    && let Some(s) = child.as_str()
+                    && let Some(pinned) = by_requested.get(s)
+                {
+                    *child = Value::String((*pinned).to_string());
+                    continue;
+                }
+                rewrite_values_images(child, by_requested);
+            }
+        }
+        Value::Sequence(seq) => {
+            for child in seq {
+                rewrite_values_images(child, by_requested);
+            }
+        }
+        _ => {}
+    }
+}
+
+fn composed_repo_tag_image(map: &serde_yaml::Mapping) -> Option<String> {
+    let repository = map
+        .get(Value::String("repository".into()))
+        .and_then(|v| v.as_str())
+        .map(str::trim)
+        .filter(|s| !s.is_empty())?;
+    let tag = map
+        .get(Value::String("tag".into()))
+        .and_then(|v| v.as_str())
+        .map(str::trim)
+        .unwrap_or("");
+    let registry = map
+        .get(Value::String("registry".into()))
+        .and_then(|v| v.as_str())
+        .map(str::trim)
+        .filter(|s| !s.is_empty());
+    let repo = if let Some(registry) = registry {
+        format!("{registry}/{repository}")
+    } else {
+        repository.to_string()
+    };
+    if tag.is_empty() {
+        Some(repo)
+    } else {
+        Some(format!("{repo}:{tag}"))
+    }
+}
+
+fn apply_repo_tag_pin(map: &mut serde_yaml::Mapping, pinned: &str) {
+    let (repo, digest) = split_name_digest(pinned);
+    // When registry is a separate key (Bitnami-style), keep repository as the
+    // path-only segment so templates that join registry/repository do not double the host.
+    let repository = match map
+        .get(Value::String("registry".into()))
+        .and_then(|v| v.as_str())
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+    {
+        Some(registry) => {
+            let prefix = format!("{registry}/");
+            repo.strip_prefix(&prefix).unwrap_or(repo)
+        }
+        None => repo,
+    };
+    map.insert(
+        Value::String("repository".into()),
+        Value::String(repository.to_string()),
+    );
+    map.insert(
+        Value::String("digest".into()),
+        Value::String(digest.to_string()),
+    );
+    map.insert(Value::String("tag".into()), Value::String(String::new()));
+}
+
+fn split_name_digest(pinned: &str) -> (&str, &str) {
+    if let Some((name, digest)) = pinned.split_once('@') {
+        (name, digest)
+    } else {
+        (pinned, "")
     }
 }

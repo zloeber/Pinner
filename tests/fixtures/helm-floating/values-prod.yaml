@@ -1,0 +1,3 @@
+# Additional values*.yaml pattern — floating string image.
+app:
+  image: redis:latest
