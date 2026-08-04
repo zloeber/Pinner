@@ -9,9 +9,12 @@ use pinner_ecosystem::{
     Ecosystem, EcosystemCtx, EcosystemError, EcosystemKind, Finding, Manifest, Pin, Rewrite,
 };
 
-/// Helm ecosystem: discover/extract/resolve/rewrite Chart.yaml dependencies.
+/// Helm ecosystem: discover/extract/resolve/rewrite Chart.yaml dependencies
+/// and floating images in `values*.yaml`.
 #[derive(Debug, Default, Clone, Copy)]
 pub struct HelmEcosystem;
+
+pub use resolve::{resolve_helm_chart_version, resolve_helm_chart_version_with};
 
 impl Ecosystem for HelmEcosystem {
     fn kind(&self) -> EcosystemKind {

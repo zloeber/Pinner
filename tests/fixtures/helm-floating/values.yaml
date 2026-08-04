@@ -1,7 +1,6 @@
-# Intentionally floating image — Helm ecosystem must never rewrite values.yaml.
+# Floating images in values — Helm ecosystem must pin these to digests.
 image:
-  repository: nginx
+  repository: ghcr.io/example/app
   tag: latest
-redis:
-  image:
-    tag: latest
+sidecar:
+  image: nginx:latest

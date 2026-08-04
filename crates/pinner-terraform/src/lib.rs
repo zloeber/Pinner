@@ -10,6 +10,8 @@ use pinner_ecosystem::{
     Ecosystem, EcosystemCtx, EcosystemError, EcosystemKind, Finding, Manifest, Pin, Rewrite,
 };
 
+pub use resolve::{resolve_terraform_registry_module, resolve_terraform_registry_provider};
+
 /// Terraform ecosystem: discover/extract/resolve/rewrite `.tf` module sources and provider pins.
 #[derive(Debug, Default, Clone, Copy)]
 pub struct TerraformEcosystem;

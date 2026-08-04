@@ -73,13 +73,12 @@ Global flags: `--config`, `--offline`, `--dry-run`, `--ecosystem mise,node`, `--
 | Ecosystem | Default | Pin style | Sources |
 |-----------|---------|-----------|---------|
 | **terraform** | on | exact semver for registry modules/providers; git/HTTP module sources → full commit SHA in `?ref=` | `*.tf` / `*.tofu` — remote `module` blocks and `required_providers` |
-| **helm** | off (opt-in) | exact chart version strings | `Chart.yaml` dependencies; Flux `HelmRelease`; Argo CD `Application` |
+| **helm** | off (opt-in) | exact chart version strings; floating images in `values*.yaml` → `name@sha256:…` | `Chart.yaml` dependencies; Flux `HelmRelease`; Argo CD `Application`; `values.yaml` / `values*.yaml` images |
 | **k8s** | off (opt-in) | container images → `name@sha256:…` | YAML workloads: Deployment, StatefulSet, DaemonSet, Job, CronJob |
 
 ### What is skipped
 
 - **Terraform:** local module sources (`./`, `../`, absolute paths); CLI `required_version`; `.terraform/` directory during discovery.
-- **Helm:** `values.yaml` / `values.yml` (including images there — use the **k8s** ecosystem for workload images).
 - **Kubernetes:** non-workload kinds (ConfigMap, HelmRelease, etc.).
 
 ### Resolution (lock, native evidence, env maps)
@@ -88,7 +87,9 @@ Resolve order matches other ecosystems: existing `pinner.lock.json` pins first, 
 
 - **Terraform providers:** may use `.terraform.lock.hcl` provider selections when present.
 - **Terraform git modules:** when online, `git ls-remote` can resolve a floating `ref` to a full SHA (rewritten as `?ref=<full-sha>`).
-- **Registry HTTP is not implemented** for Terraform module/provider registries or Helm chart repos/OCI. Those require a lock entry or `PINNER_*_RESOLVE_MAP` until HTTP resolve ships (offline or online). K8s images use the shared Docker/buildx digest helper when online.
+- **Terraform registry modules/providers:** when online (and map/lock miss), HTTP GET against `registry.terraform.io` version APIs selects the latest matching version. Offline still requires a lock entry or `PINNER_TERRAFORM_RESOLVE_MAP`.
+- **Helm charts:** when online (and map miss), HTTP repo `index.yaml` (and OCI tags list) can resolve chart versions. Prefer `PINNER_HELM_RESOLVE_MAP` for offline/tests.
+- **Helm values images / K8s images:** use the shared Docker/buildx digest helper when online; maps preferred in tests.
 
 ### Test / CI resolve-map env vars
 
@@ -98,7 +99,7 @@ Keys may contain `=` (e.g. Terraform git `?ref=` URLs); use the **last** `=` as 
 
 ```bash
 export PINNER_TERRAFORM_RESOLVE_MAP='vpc@~> 5.0=5.1.0,hashicorp/aws@~> 5.0=5.100.0,git_mod@git::https://example.com/org/mod.git?ref=main=11bd71901bbe5b1630ceea73d27597364c9af683'
-export PINNER_HELM_RESOLVE_MAP='redis@^1.0.0=1.2.3,ingress-nginx@=4.10.0'
+export PINNER_HELM_RESOLVE_MAP='redis@^1.0.0=1.2.3,ingress-nginx@=4.10.0,nginx@nginx:latest=nginx@sha256:abc123…'
 export PINNER_K8S_RESOLVE_MAP='nginx@nginx:latest=nginx@sha256:abc123…'
 ```
 

@@ -1,8 +1,12 @@
 mod git;
+mod http;
 mod image;
+mod version;
 
 pub use git::resolve_git_sha;
+pub use http::http_get;
 pub use image::{image_name, normalize_digest_ref, resolve_image_digest};
+pub use version::{compare_semver, matches_version_constraint, select_matching_version};
 
 use std::collections::HashMap;
 
