@@ -2,7 +2,8 @@ use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, OnceLock};
 
 use pinner_ecosystem::{
-    Ecosystem, EcosystemCtx, ResolveMode, EcosystemError, EcosystemKind, EvidenceKind, Finding, Manifest, Pin,
+    Ecosystem, EcosystemCtx, EcosystemError, EcosystemKind, EvidenceKind, Finding, Manifest, Pin,
+    ResolveMode,
 };
 use pinner_mise::MiseEcosystem;
 use pinner_toolchain::{CommandOutput, CommandRunner, ToolchainError};

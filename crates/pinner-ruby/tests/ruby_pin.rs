@@ -1,4 +1,6 @@
-use pinner_ecosystem::{Ecosystem, EcosystemCtx, ResolveMode, EcosystemKind, EvidenceKind, Manifest};
+use pinner_ecosystem::{
+    Ecosystem, EcosystemCtx, EcosystemKind, EvidenceKind, Manifest, ResolveMode,
+};
 use pinner_ruby::RubyEcosystem;
 use std::fs;
 use std::path::PathBuf;

@@ -1,5 +1,7 @@
 use pinner_cargo::CargoEcosystem;
-use pinner_ecosystem::{Ecosystem, EcosystemCtx, ResolveMode, EcosystemKind, EvidenceKind, Manifest};
+use pinner_ecosystem::{
+    Ecosystem, EcosystemCtx, EcosystemKind, EvidenceKind, Manifest, ResolveMode,
+};
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::{Mutex, OnceLock};

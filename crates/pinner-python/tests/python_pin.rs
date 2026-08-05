@@ -1,4 +1,6 @@
-use pinner_ecosystem::{Ecosystem, EcosystemCtx, ResolveMode, EcosystemKind, EvidenceKind, Finding};
+use pinner_ecosystem::{
+    Ecosystem, EcosystemCtx, EcosystemKind, EvidenceKind, Finding, ResolveMode,
+};
 use pinner_python::PythonEcosystem;
 use std::fs;
 use std::path::{Path, PathBuf};

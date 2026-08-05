@@ -1,7 +1,7 @@
 use std::path::{Path, PathBuf};
 use std::sync::{Mutex, OnceLock};
 
-use pinner_ecosystem::{Ecosystem, EcosystemCtx, ResolveMode, EvidenceKind};
+use pinner_ecosystem::{Ecosystem, EcosystemCtx, EvidenceKind, ResolveMode};
 use pinner_terraform::TerraformEcosystem;
 
 fn env_lock() -> &'static Mutex<()> {
