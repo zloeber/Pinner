@@ -1672,6 +1672,7 @@ dependencies = [
  "pinner-core",
  "pinner-ecosystem",
  "ratatui",
+ "serde_json",
 ]
 
 [[package]]

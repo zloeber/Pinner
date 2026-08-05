@@ -218,12 +218,24 @@ fn draw(frame: &mut Frame, app: &App) {
                 status.to_string(),
                 pin.ecosystem.as_str().to_string(),
                 pin.name.clone(),
-                format!("{} → {}", pin.requested, pin.pinned),
+                format_pin_transition(pin),
                 pin.path.display().to_string(),
             ])
             .style(style)
         })
         .collect();
+
+    let upgrade_mode = any_upgrade_pins(&app.pins);
+    let transition_header = if upgrade_mode {
+        "current → proposed"
+    } else {
+        "requested → proposed"
+    };
+    let table_title = if upgrade_mode {
+        "proposed upgrades"
+    } else {
+        "proposed pins"
+    };
 
     let table = Table::new(
         rows,
@@ -236,13 +248,13 @@ fn draw(frame: &mut Frame, app: &App) {
         ],
     )
     .header(
-        Row::new(["", "eco", "name", "requested → proposed", "path"])
+        Row::new(["", "eco", "name", transition_header, "path"])
             .style(Style::default().add_modifier(Modifier::BOLD)),
     )
     .block(
         Block::default()
             .borders(Borders::ALL)
-            .title("proposed pins"),
+            .title(table_title),
     );
     frame.render_widget(table, chunks[1]);
 
@@ -270,6 +282,28 @@ fn draw(frame: &mut Frame, app: &App) {
     }
 }
 
+fn is_upgrade_pin(pin: &Pin) -> bool {
+    pin.metadata
+        .get("upgrade")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false)
+}
+
+fn any_upgrade_pins(pins: &[Pin]) -> bool {
+    pins.iter().any(is_upgrade_pin)
+}
+
+fn format_pin_transition(pin: &Pin) -> String {
+    let current = pin
+        .metadata
+        .get("upgrade")
+        .and_then(|v| v.as_bool())
+        .filter(|u| *u)
+        .and_then(|_| pin.metadata.get("previous").and_then(|v| v.as_str()))
+        .unwrap_or(pin.requested.as_str());
+    format!("{current} → {}", pin.pinned)
+}
+
 fn centered_rect(percent_x: u16, height: u16, area: Rect) -> Rect {
     let top = area.height.saturating_sub(height) / 2;
     let vertical = Layout::vertical([
@@ -288,12 +322,36 @@ fn centered_rect(percent_x: u16, height: u16, area: Rect) -> Rect {
 
 #[cfg(test)]
 mod tests {
+    use std::path::PathBuf;
+
     use super::*;
     use pinner_core::WalkthroughOutcome;
+    use pinner_ecosystem::{EcosystemKind, EvidenceKind};
+    use serde_json::Value;
+
+    fn sample_pin(requested: &str, pinned: &str) -> Pin {
+        Pin {
+            ecosystem: EcosystemKind::Mise,
+            name: "test".into(),
+            requested: requested.into(),
+            pinned: pinned.into(),
+            path: PathBuf::from(".mise.toml"),
+            evidence: EvidenceKind::Tool,
+            metadata: Default::default(),
+        }
+    }
 
     #[test]
     fn empty_pins_continue_without_tui() {
         let outcome = run_compact_walkthrough(&[]).unwrap();
         assert_eq!(outcome, WalkthroughOutcome::Continue { pins: vec![] });
+    }
+
+    #[test]
+    fn format_pin_transition_prefers_previous_for_upgrade() {
+        let mut pin = sample_pin("1.0.0", "2.0.0");
+        pin.metadata.insert("upgrade".into(), Value::Bool(true));
+        pin.metadata.insert("previous".into(), Value::String("1.0.0".into()));
+        assert_eq!(format_pin_transition(&pin), "1.0.0 → 2.0.0");
     }
 }
