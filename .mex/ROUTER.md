@@ -32,6 +32,7 @@ Then read this file fully before doing anything else in this session.
 
 **Not yet built:**
 - Full `.mex/` pattern library (index still scaffold-level)
+- `pinner upgrade` (opt-in latest-version bumps) — design + plan at `docs/superpowers/specs/2026-08-05-upgrade-subcommand-design.md` and `docs/superpowers/plans/2026-08-05-upgrade-subcommand.md`
 
 **Known issues:**
 - Semantic-release tag push requires a valid classic `PAT_TOKEN` (repo secret); expired/wrong-scope PATs fail at push, not checkout

@@ -12,3 +12,4 @@
 
 - [Pinner design](superpowers/specs/2026-08-03-pinner-design.md)
 - [IaC pinning design](superpowers/specs/2026-08-03-iac-pinning-design.md)
+- [Upgrade subcommand design](superpowers/specs/2026-08-05-upgrade-subcommand-design.md)
