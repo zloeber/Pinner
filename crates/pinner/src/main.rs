@@ -313,17 +313,22 @@ fn emit_audit(report: &RunReport, format: Format) -> Result<(), Box<dyn std::err
             println!("{}", serde_json::to_string(&payload)?);
         }
         Format::Text => {
-            if report.findings.is_empty() {
+            if stdout_is_tty() {
+                let mut out = io::stdout().lock();
+                pinner_ui::emit_pretty_audit(report, &mut out, true)?;
+                out.flush()?;
+            } else if report.findings.is_empty() {
                 println!("no floating findings");
-            }
-            for finding in &report.findings {
-                println!(
-                    "{} {} requested={} path={}",
-                    finding.ecosystem.as_str(),
-                    finding.name,
-                    finding.requested,
-                    finding.path.display()
-                );
+            } else {
+                for finding in &report.findings {
+                    println!(
+                        "{} {} requested={} path={}",
+                        finding.ecosystem.as_str(),
+                        finding.name,
+                        finding.requested,
+                        finding.path.display()
+                    );
+                }
             }
         }
     }

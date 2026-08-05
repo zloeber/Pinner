@@ -25,7 +25,7 @@ Common commands:
 pinner pin       # resolve floating → exact + rewrite + pinner.lock.json
 pinner upgrade   # bump exact pins to latest + rewrite + lock
 pinner check     # drift gate (no writes)
-pinner audit     # report floating refs
+pinner audit     # report floating refs (pretty panel on TTY)
 pinner audit --fix
 pinner explain <name-or-path>
 ```
@@ -38,6 +38,7 @@ pinner upgrade --agent             # same for upgrades
 pinner pin --walkthrough           # interactive compact-list gate (TTY only)
 pinner upgrade --walkthrough       # interactive accept/skip/edit per row (TTY only)
 pinner audit --format json         # machine-readable findings
+pinner audit --agent               # same JSON contract for agents
 ```
 
 **Agents:** prefer `--agent` / `--format json`. Never pass `--walkthrough` in non-interactive or agent loops.

@@ -3,5 +3,5 @@
 mod pretty;
 mod walkthrough;
 
-pub use pretty::emit_pretty_report;
+pub use pretty::{emit_pretty_audit, emit_pretty_report};
 pub use walkthrough::run_compact_walkthrough;
