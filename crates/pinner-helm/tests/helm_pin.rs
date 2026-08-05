@@ -1,7 +1,9 @@
 use std::path::{Path, PathBuf};
 use std::sync::{Mutex, OnceLock};
 
-use pinner_ecosystem::{Ecosystem, EcosystemCtx, ResolveMode};
+use pinner_ecosystem::{
+    Ecosystem, EcosystemCtx, EcosystemKind, EvidenceKind, Finding, Pin, ResolveMode,
+};
 use pinner_helm::HelmEcosystem;
 
 fn env_lock() -> &'static Mutex<()> {
@@ -11,6 +13,10 @@ fn env_lock() -> &'static Mutex<()> {
 
 fn fixture_dir() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../tests/fixtures/helm-floating")
+}
+
+fn upgrade_fixture() -> PathBuf {
+    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../tests/fixtures/helm-upgrade")
 }
 
 fn ctx(repo: &Path) -> EcosystemCtx<'_> {
@@ -516,5 +522,184 @@ fn offline_without_map_fails_closed() {
     assert!(
         msg.contains("offline") || msg.contains("PINNER_HELM_RESOLVE_MAP"),
         "unexpected error: {msg}"
+    );
+}
+
+#[test]
+fn upgrade_prefers_resolve_map_over_lock() {
+    let _guard = env_lock().lock().unwrap();
+    // SAFETY: test-only resolve seam; serialized via env_lock.
+    unsafe {
+        std::env::set_var("PINNER_HELM_RESOLVE_MAP", "redis@*=19.0.0");
+    }
+    let eco = HelmEcosystem;
+    let repo = upgrade_fixture();
+    let stale_lock = [Pin {
+        ecosystem: EcosystemKind::Helm,
+        name: "redis".into(),
+        requested: "*".into(),
+        pinned: "18.6.1".into(),
+        path: PathBuf::from("Chart.yaml"),
+        evidence: EvidenceKind::Lock,
+        metadata: {
+            let mut m = serde_json::Map::new();
+            m.insert(
+                "repository".into(),
+                serde_json::Value::String("https://charts.bitnami.com/bitnami".into()),
+            );
+            m.insert("chart".into(), serde_json::Value::String("redis".into()));
+            m
+        },
+    }];
+    let ctx = EcosystemCtx {
+        repo: &repo,
+        lock_pins: &stale_lock,
+        offline: true,
+        pin_exact_ranges: true,
+        resolve_mode: ResolveMode::Upgrade,
+    };
+    let finding = Finding {
+        ecosystem: EcosystemKind::Helm,
+        name: "redis".into(),
+        requested: "*".into(),
+        path: PathBuf::from("Chart.yaml"),
+        is_floating: true,
+    };
+    let pins = eco.resolve(&[finding], &ctx);
+    unsafe {
+        std::env::remove_var("PINNER_HELM_RESOLVE_MAP");
+    }
+    let pins = pins.unwrap();
+    assert_eq!(pins.len(), 1);
+    assert_eq!(pins[0].pinned, "19.0.0");
+    assert_eq!(pins[0].metadata["previous"], "18.6.1");
+    assert_eq!(pins[0].metadata["upgrade"], true);
+    assert_eq!(pins[0].metadata["upgrade_channel"], "map");
+    assert_eq!(
+        pins[0].metadata.get("repository").and_then(|v| v.as_str()),
+        Some("https://charts.bitnami.com/bitnami")
+    );
+    assert_ne!(pins[0].evidence, EvidenceKind::Lock);
+}
+
+#[test]
+fn upgrade_omits_when_map_matches_previous() {
+    let _guard = env_lock().lock().unwrap();
+    // SAFETY: test-only resolve seam; serialized via env_lock.
+    unsafe {
+        std::env::set_var("PINNER_HELM_RESOLVE_MAP", "redis@18.6.1=18.6.1");
+    }
+    let eco = HelmEcosystem;
+    let repo = upgrade_fixture();
+    let ctx = EcosystemCtx {
+        repo: &repo,
+        lock_pins: &[],
+        offline: true,
+        pin_exact_ranges: true,
+        resolve_mode: ResolveMode::Upgrade,
+    };
+    let finding = Finding {
+        ecosystem: EcosystemKind::Helm,
+        name: "redis".into(),
+        requested: "18.6.1".into(),
+        path: PathBuf::from("Chart.yaml"),
+        is_floating: false,
+    };
+    let pins = eco.resolve(&[finding], &ctx);
+    unsafe {
+        std::env::remove_var("PINNER_HELM_RESOLVE_MAP");
+    }
+    let pins = pins.unwrap();
+    assert!(
+        pins.is_empty(),
+        "unchanged upgrade must be omitted, got {pins:?}"
+    );
+}
+
+#[test]
+fn upgrade_image_prefers_map_over_lock() {
+    let _guard = env_lock().lock().unwrap();
+    let new_digest =
+        "nginx@sha256:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff";
+    // SAFETY: test-only resolve seam; serialized via env_lock.
+    unsafe {
+        std::env::set_var(
+            "PINNER_HELM_RESOLVE_MAP",
+            format!("nginx@nginx:latest={new_digest}"),
+        );
+    }
+    let eco = HelmEcosystem;
+    let repo = upgrade_fixture();
+    let stale_lock = [Pin {
+        ecosystem: EcosystemKind::Helm,
+        name: "nginx".into(),
+        requested: "nginx:latest".into(),
+        pinned: "nginx@sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+            .into(),
+        path: PathBuf::from("values.yaml"),
+        evidence: EvidenceKind::Lock,
+        metadata: Default::default(),
+    }];
+    let ctx = EcosystemCtx {
+        repo: &repo,
+        lock_pins: &stale_lock,
+        offline: true,
+        pin_exact_ranges: true,
+        resolve_mode: ResolveMode::Upgrade,
+    };
+    let finding = Finding {
+        ecosystem: EcosystemKind::Helm,
+        name: "nginx".into(),
+        requested: "nginx:latest".into(),
+        path: PathBuf::from("values.yaml"),
+        is_floating: true,
+    };
+    let pins = eco.resolve(&[finding], &ctx);
+    unsafe {
+        std::env::remove_var("PINNER_HELM_RESOLVE_MAP");
+    }
+    let pins = pins.unwrap();
+    assert_eq!(pins.len(), 1);
+    assert_eq!(pins[0].pinned, new_digest);
+    assert_ne!(pins[0].evidence, EvidenceKind::Lock);
+}
+
+#[test]
+fn upgrade_offline_without_map_ignores_lock() {
+    let _guard = env_lock().lock().unwrap();
+    // SAFETY: clear map so resolve cannot succeed via seam.
+    unsafe {
+        std::env::remove_var("PINNER_HELM_RESOLVE_MAP");
+    }
+    let eco = HelmEcosystem;
+    let repo = upgrade_fixture();
+    let stale_lock = [Pin {
+        ecosystem: EcosystemKind::Helm,
+        name: "redis".into(),
+        requested: "*".into(),
+        pinned: "18.6.1".into(),
+        path: PathBuf::from("Chart.yaml"),
+        evidence: EvidenceKind::Lock,
+        metadata: Default::default(),
+    }];
+    let ctx = EcosystemCtx {
+        repo: &repo,
+        lock_pins: &stale_lock,
+        offline: true,
+        pin_exact_ranges: true,
+        resolve_mode: ResolveMode::Upgrade,
+    };
+    let finding = Finding {
+        ecosystem: EcosystemKind::Helm,
+        name: "redis".into(),
+        requested: "*".into(),
+        path: PathBuf::from("Chart.yaml"),
+        is_floating: true,
+    };
+    let err = eco.resolve(&[finding], &ctx).unwrap_err();
+    let msg = err.to_string();
+    assert!(
+        msg.contains("offline") || msg.contains("PINNER_HELM_RESOLVE_MAP"),
+        "upgrade must not freeze on lock; got {msg}"
     );
 }

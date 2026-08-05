@@ -32,11 +32,11 @@ Then read this file fully before doing anything else in this session.
 
 **Working (partial):**
 - Core `upgrade` / `upgrade_with_filter` + CLI + walkthrough + `upgrade_pin`
-- Python/Node/Mise/Docker/Actions Upgrade resolve (`PINNER_*_RESOLVE_MAP` → tool/registry) — remaining ecosystems still outstanding
+- Python/Node/Mise/Docker/Actions/Terraform/Helm/K8s Upgrade resolve (`PINNER_*_RESOLVE_MAP` → tool/registry) — remaining: cargo/go/ruby/gitlab/azure
 
 **Not yet built:**
 - Full `.mex/` pattern library (index still scaffold-level)
-- Remaining per-ecosystem Upgrade resolve (terraform/helm/k8s/cargo/go/ruby/gitlab/azure) + docs — design + plan at `docs/superpowers/specs/2026-08-05-upgrade-subcommand-design.md` and `docs/superpowers/plans/2026-08-05-upgrade-subcommand.md`
+- Remaining per-ecosystem Upgrade resolve (cargo/go/ruby/gitlab/azure) + docs — design + plan at `docs/superpowers/specs/2026-08-05-upgrade-subcommand-design.md` and `docs/superpowers/plans/2026-08-05-upgrade-subcommand.md`
 
 **Known issues:**
 - Semantic-release tag push requires a valid classic `PAT_TOKEN` (repo secret); expired/wrong-scope PATs fail at push, not checkout

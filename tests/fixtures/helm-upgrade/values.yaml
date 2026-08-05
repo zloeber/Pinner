@@ -1,0 +1,6 @@
+# Floating images in values — Helm ecosystem must pin these to digests.
+image:
+  repository: ghcr.io/example/app
+  tag: latest
+sidecar:
+  image: nginx:latest

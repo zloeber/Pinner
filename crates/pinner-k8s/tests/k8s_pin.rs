@@ -1,7 +1,9 @@
 use std::path::{Path, PathBuf};
 use std::sync::{Mutex, OnceLock};
 
-use pinner_ecosystem::{Ecosystem, EcosystemCtx, ResolveMode};
+use pinner_ecosystem::{
+    Ecosystem, EcosystemCtx, EcosystemKind, EvidenceKind, Finding, Pin, ResolveMode,
+};
 use pinner_k8s::K8sEcosystem;
 
 fn env_lock() -> &'static Mutex<()> {
@@ -11,6 +13,10 @@ fn env_lock() -> &'static Mutex<()> {
 
 fn fixture_dir() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../tests/fixtures/k8s-floating")
+}
+
+fn upgrade_fixture() -> PathBuf {
+    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../tests/fixtures/k8s-upgrade")
 }
 
 fn ctx(repo: &Path) -> EcosystemCtx<'_> {
@@ -268,4 +274,169 @@ spec:
     assert_eq!(findings.len(), 1);
     assert!(!findings[0].is_floating);
     assert!(findings[0].requested.contains("@sha256:"));
+}
+
+#[test]
+fn upgrade_prefers_resolve_map_over_lock() {
+    let _guard = env_lock().lock().unwrap();
+    let new_digest =
+        "nginx@sha256:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff";
+    // SAFETY: test-only resolve seam; serialized via env_lock.
+    unsafe {
+        std::env::set_var(
+            "PINNER_K8S_RESOLVE_MAP",
+            format!("nginx@nginx:latest={new_digest}"),
+        );
+    }
+    let eco = K8sEcosystem;
+    let repo = upgrade_fixture();
+    let stale_lock = [Pin {
+        ecosystem: EcosystemKind::K8s,
+        name: "nginx".into(),
+        requested: "nginx:latest".into(),
+        pinned: "nginx@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+            .into(),
+        path: PathBuf::from("deployment.yaml"),
+        evidence: EvidenceKind::Lock,
+        metadata: Default::default(),
+    }];
+    let ctx = EcosystemCtx {
+        repo: &repo,
+        lock_pins: &stale_lock,
+        offline: true,
+        pin_exact_ranges: true,
+        resolve_mode: ResolveMode::Upgrade,
+    };
+    let finding = Finding {
+        ecosystem: EcosystemKind::K8s,
+        name: "nginx".into(),
+        requested: "nginx:latest".into(),
+        path: PathBuf::from("deployment.yaml"),
+        is_floating: true,
+    };
+    let pins = eco.resolve(&[finding], &ctx);
+    unsafe {
+        std::env::remove_var("PINNER_K8S_RESOLVE_MAP");
+    }
+    let pins = pins.unwrap();
+    assert_eq!(pins.len(), 1);
+    assert_eq!(pins[0].pinned, new_digest);
+    assert_eq!(
+        pins[0].metadata["previous"],
+        "nginx@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    );
+    assert_eq!(pins[0].metadata["upgrade"], true);
+    assert_eq!(pins[0].metadata["upgrade_channel"], "map");
+    assert_ne!(pins[0].evidence, EvidenceKind::Lock);
+}
+
+#[test]
+fn upgrade_omits_when_map_matches_previous() {
+    let _guard = env_lock().lock().unwrap();
+    let pinned =
+        "nginx:latest@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+    // SAFETY: test-only resolve seam; serialized via env_lock.
+    unsafe {
+        std::env::set_var(
+            "PINNER_K8S_RESOLVE_MAP",
+            format!("{pinned}={pinned},nginx@nginx:latest={pinned}"),
+        );
+    }
+    let eco = K8sEcosystem;
+    let repo = upgrade_fixture();
+    let ctx = EcosystemCtx {
+        repo: &repo,
+        lock_pins: &[],
+        offline: true,
+        pin_exact_ranges: true,
+        resolve_mode: ResolveMode::Upgrade,
+    };
+    let finding = Finding {
+        ecosystem: EcosystemKind::K8s,
+        name: "nginx".into(),
+        requested: pinned.into(),
+        path: PathBuf::from("deployment.yaml"),
+        is_floating: false,
+    };
+    let pins = eco.resolve(&[finding], &ctx);
+    unsafe {
+        std::env::remove_var("PINNER_K8S_RESOLVE_MAP");
+    }
+    let pins = pins.unwrap();
+    assert!(
+        pins.is_empty(),
+        "unchanged upgrade must be omitted, got {pins:?}"
+    );
+}
+
+#[test]
+fn upgrade_digest_only_without_tag_skips() {
+    let _guard = env_lock().lock().unwrap();
+    // SAFETY: clear map — skip must not depend on map for digest-only.
+    unsafe {
+        std::env::remove_var("PINNER_K8S_RESOLVE_MAP");
+    }
+    let eco = K8sEcosystem;
+    let repo = upgrade_fixture();
+    let ctx = EcosystemCtx {
+        repo: &repo,
+        lock_pins: &[],
+        offline: true,
+        pin_exact_ranges: true,
+        resolve_mode: ResolveMode::Upgrade,
+    };
+    let finding = Finding {
+        ecosystem: EcosystemKind::K8s,
+        name: "nginx".into(),
+        requested: "nginx@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+            .into(),
+        path: PathBuf::from("deployment.yaml"),
+        is_floating: false,
+    };
+    let pins = eco.resolve(&[finding], &ctx).unwrap();
+    assert!(
+        pins.is_empty(),
+        "digest-only without tag must skip, got {pins:?}"
+    );
+}
+
+#[test]
+fn upgrade_offline_without_map_ignores_lock() {
+    let _guard = env_lock().lock().unwrap();
+    // SAFETY: clear map so resolve cannot succeed via seam.
+    unsafe {
+        std::env::remove_var("PINNER_K8S_RESOLVE_MAP");
+    }
+    let eco = K8sEcosystem;
+    let repo = upgrade_fixture();
+    let stale_lock = [Pin {
+        ecosystem: EcosystemKind::K8s,
+        name: "nginx".into(),
+        requested: "nginx:latest".into(),
+        pinned: "nginx@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+            .into(),
+        path: PathBuf::from("deployment.yaml"),
+        evidence: EvidenceKind::Lock,
+        metadata: Default::default(),
+    }];
+    let ctx = EcosystemCtx {
+        repo: &repo,
+        lock_pins: &stale_lock,
+        offline: true,
+        pin_exact_ranges: true,
+        resolve_mode: ResolveMode::Upgrade,
+    };
+    let finding = Finding {
+        ecosystem: EcosystemKind::K8s,
+        name: "nginx".into(),
+        requested: "nginx:latest".into(),
+        path: PathBuf::from("deployment.yaml"),
+        is_floating: true,
+    };
+    let err = eco.resolve(&[finding], &ctx).unwrap_err();
+    let msg = err.to_string();
+    assert!(
+        msg.contains("offline") || msg.contains("PINNER_K8S_RESOLVE_MAP"),
+        "upgrade must not freeze on lock; got {msg}"
+    );
 }

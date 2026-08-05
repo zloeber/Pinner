@@ -45,3 +45,4 @@ Core passes `ResolveMode::Upgrade` with empty `lock_pins`. Each ecosystem must s
 
 - python, node (Task 6)
 - mise, docker, actions (Task 7) — docker/actions skip digest-only without tag metadata
+- terraform, helm, k8s (Task 8) — terraform registry uses unconstrained `*`; git modules `ls-remote HEAD`; `.terraform.lock.hcl` ignored in upgrade; helm/k8s images skip digest-only without tag; helm chart pins must keep `repository` metadata after `upgrade_pin`
