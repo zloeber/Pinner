@@ -9,7 +9,7 @@ use std::sync::Arc;
 use clap::Parser;
 use pinner_core::{
     ExplainReport, Policy, RunOptions, RunReport, WalkthroughFilter, WalkthroughOutcome, audit,
-    check, explain, pin, pin_with_filter,
+    check, explain, pin, pin_with_filter, upgrade, upgrade_with_filter,
 };
 use pinner_ecosystem::{Ecosystem, EcosystemKind};
 use pinner_toolchain::{ToolStatus, ensure, status};
@@ -75,6 +75,16 @@ fn run(cli: Cli) -> CliResult<ExitCode> {
             emit_report(&report, format)?;
             Ok(ExitCode::SUCCESS)
         }
+        Commands::Upgrade => {
+            let (policy, opts, ecosystems) = prepare(&cli)?;
+            let (report, aborted) = run_upgrade(&ecosystems, &policy, &opts, cli.walkthrough)?;
+            if aborted {
+                eprintln!("walkthrough aborted; nothing written");
+                return Ok(ExitCode::SUCCESS);
+            }
+            emit_report(&report, format)?;
+            Ok(ExitCode::SUCCESS)
+        }
         Commands::Check => {
             let (policy, opts, ecosystems) = prepare(&cli)?;
             let report = check(&ecosystems, &policy, &opts)?;
@@ -109,6 +119,30 @@ fn run_pin(
         };
     let filter_ref: &mut WalkthroughFilter<'_> = &mut filter;
     let report = pin_with_filter(ecosystems, policy, opts, Some(filter_ref))?;
+    Ok((report, aborted.get()))
+}
+
+fn run_upgrade(
+    ecosystems: &[Arc<dyn Ecosystem>],
+    policy: &Policy,
+    opts: &RunOptions,
+    walkthrough: bool,
+) -> CliResult<(RunReport, bool)> {
+    if !walkthrough {
+        return Ok((upgrade(ecosystems, policy, opts)?, false));
+    }
+
+    let aborted = Cell::new(false);
+    let mut filter =
+        |pins: &[pinner_ecosystem::Pin]| -> Result<WalkthroughOutcome, pinner_core::CoreError> {
+            let outcome = pinner_ui::run_compact_walkthrough(pins)?;
+            if matches!(outcome, WalkthroughOutcome::Aborted) {
+                aborted.set(true);
+            }
+            Ok(outcome)
+        };
+    let filter_ref: &mut WalkthroughFilter<'_> = &mut filter;
+    let report = upgrade_with_filter(ecosystems, policy, opts, Some(filter_ref))?;
     Ok((report, aborted.get()))
 }
 
