@@ -9,6 +9,8 @@ pub struct RunReport {
     pub rewrites: Vec<Rewrite>,
     pub findings: Vec<Finding>,
     pub drift: Vec<DriftItem>,
+    /// Count of pins applied by `upgrade` (0 for pin/check/audit).
+    pub upgraded: usize,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]

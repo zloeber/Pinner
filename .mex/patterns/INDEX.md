@@ -23,6 +23,7 @@ Lookup table for all pattern files in this directory. Check here before starting
 
 | Pattern | Use when |
 |---------|----------|
+| [core-upgrade-orchestration.md](core-upgrade-orchestration.md) | Adding or changing pinner-core `upgrade` / `upgrade_with_filter` orchestration |
 | [fix-github-actions-node24.md](fix-github-actions-node24.md) | Node 20 Actions deprecation warnings or semantic-release PAT checkout auth failures |
 | [fix-release-locked-after-version-bump.md](fix-release-locked-after-version-bump.md) | release.yml fails `cargo build --locked` after rewriting workspace version from tag |
 | [fix-task-install-version-lag.md](fix-task-install-version-lag.md) | `task install` reports stale Cargo.toml version after a newer GitHub Release |

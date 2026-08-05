@@ -30,9 +30,12 @@ Then read this file fully before doing anything else in this session.
 - Tag-driven releases (`semantic-release.yml` → `release.yml`) and mdBook docs Pages deploy
 - Workflows use Node 24 action majors (`checkout@v5`, `mise-action@v4`, artifact/pages v5–v7)
 
+**Working (partial):**
+- Core `upgrade` / `upgrade_with_filter` in `pinner-core` (`ResolveMode::Upgrade`, `RunReport.upgraded`) — CLI/ecosystem resolve branches still outstanding
+
 **Not yet built:**
 - Full `.mex/` pattern library (index still scaffold-level)
-- `pinner upgrade` (opt-in latest-version bumps) — design + plan at `docs/superpowers/specs/2026-08-05-upgrade-subcommand-design.md` and `docs/superpowers/plans/2026-08-05-upgrade-subcommand.md`
+- `pinner upgrade` CLI + per-ecosystem Upgrade resolve + docs — design + plan at `docs/superpowers/specs/2026-08-05-upgrade-subcommand-design.md` and `docs/superpowers/plans/2026-08-05-upgrade-subcommand.md`
 
 **Known issues:**
 - Semantic-release tag push requires a valid classic `PAT_TOKEN` (repo secret); expired/wrong-scope PATs fail at push, not checkout

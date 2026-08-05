@@ -31,7 +31,7 @@ struct ResolvedBatch {
     ecosystem: Arc<dyn Ecosystem>,
     manifests: Vec<Manifest>,
     all_findings: Vec<Finding>,
-    floating: Vec<Finding>,
+    candidates: Vec<Finding>,
     resolved: Vec<Pin>,
 }
 
@@ -52,20 +52,41 @@ pub fn pin_with_filter(
     ecosystems: &[Arc<dyn Ecosystem>],
     policy: &Policy,
     opts: &RunOptions,
+    walkthrough: Option<&mut WalkthroughFilter<'_>>,
+) -> Result<RunReport, CoreError> {
+    run_resolve_rewrite(ecosystems, policy, opts, walkthrough, ResolveMode::Pin)
+}
+
+pub fn upgrade(
+    ecosystems: &[Arc<dyn Ecosystem>],
+    policy: &Policy,
+    opts: &RunOptions,
+) -> Result<RunReport, CoreError> {
+    upgrade_with_filter(ecosystems, policy, opts, None)
+}
+
+/// Like [`upgrade`], with an optional walkthrough before rewrite/lock.
+pub fn upgrade_with_filter(
+    ecosystems: &[Arc<dyn Ecosystem>],
+    policy: &Policy,
+    opts: &RunOptions,
+    walkthrough: Option<&mut WalkthroughFilter<'_>>,
+) -> Result<RunReport, CoreError> {
+    run_resolve_rewrite(ecosystems, policy, opts, walkthrough, ResolveMode::Upgrade)
+}
+
+fn run_resolve_rewrite(
+    ecosystems: &[Arc<dyn Ecosystem>],
+    policy: &Policy,
+    opts: &RunOptions,
     mut walkthrough: Option<&mut WalkthroughFilter<'_>>,
+    resolve_mode: ResolveMode,
 ) -> Result<RunReport, CoreError> {
     let lock_path = opts.repo.join(LOCK_NAME);
-    let lock_pins = if lock_path.exists() {
+    let prior_lock = if lock_path.exists() {
         lock_to_pins(LockFile::read(&lock_path)?)
     } else {
         Vec::new()
-    };
-    let ctx = EcosystemCtx {
-        repo: &opts.repo,
-        lock_pins: &lock_pins,
-        offline: opts.offline,
-        pin_exact_ranges: policy.pin_exact_ranges,
-        resolve_mode: ResolveMode::Pin,
     };
 
     let selected: Vec<_> = selected_ecosystems(ecosystems, policy, opts).collect();
@@ -75,26 +96,50 @@ pub fn pin_with_filter(
     // failure, write nothing. Rewrites are staged only after an optional walkthrough.
     let mut batches = Vec::new();
     let mut all_resolved = Vec::new();
+    {
+        // Upgrade resolve bypasses pinner.lock; Pin mode still prefers it.
+        let empty_lock: &[Pin] = &[];
+        let lock_for_resolve: &[Pin] = match resolve_mode {
+            ResolveMode::Pin => &prior_lock,
+            ResolveMode::Upgrade => empty_lock,
+        };
+        let ctx = EcosystemCtx {
+            repo: &opts.repo,
+            lock_pins: lock_for_resolve,
+            offline: opts.offline,
+            pin_exact_ranges: policy.pin_exact_ranges,
+            resolve_mode,
+        };
 
-    for ecosystem in &selected {
-        let (manifests, all_findings) =
-            discover_and_extract(ecosystem.as_ref(), policy, &opts.repo, &ctx)?;
+        for ecosystem in &selected {
+            let (manifests, all_findings) =
+                discover_and_extract(ecosystem.as_ref(), policy, &opts.repo, &ctx)?;
 
-        let floating: Vec<_> = all_findings
-            .iter()
-            .filter(|finding| finding.is_floating && !is_allowlisted(finding, policy, &opts.repo))
-            .cloned()
-            .collect();
+            let candidates: Vec<_> = match resolve_mode {
+                ResolveMode::Pin => all_findings
+                    .iter()
+                    .filter(|finding| {
+                        finding.is_floating && !is_allowlisted(finding, policy, &opts.repo)
+                    })
+                    .cloned()
+                    .collect(),
+                // Allowlisted floating refs remain upgradeable; do not filter them out.
+                ResolveMode::Upgrade => all_findings.clone(),
+            };
 
-        let resolved = ecosystem.resolve(&floating, &ctx)?;
-        all_resolved.extend(resolved.iter().cloned());
-        batches.push(ResolvedBatch {
-            ecosystem: Arc::clone(ecosystem),
-            manifests,
-            all_findings,
-            floating,
-            resolved,
-        });
+            let mut resolved = ecosystem.resolve(&candidates, &ctx)?;
+            if resolve_mode == ResolveMode::Upgrade {
+                resolved.retain(|pin| !is_unchanged_upgrade(pin));
+            }
+            all_resolved.extend(resolved.iter().cloned());
+            batches.push(ResolvedBatch {
+                ecosystem: Arc::clone(ecosystem),
+                manifests,
+                all_findings,
+                candidates,
+                resolved,
+            });
+        }
     }
 
     if let Some(cb) = walkthrough.as_mut() {
@@ -109,11 +154,24 @@ pub fn pin_with_filter(
                         .cloned()
                         .collect();
                 }
+                all_resolved = pins;
             }
         }
     }
 
+    // Upgrade with nothing to bump: success, no writes.
+    if resolve_mode == ResolveMode::Upgrade && all_resolved.is_empty() {
+        let mut report = RunReport::default();
+        for batch in &batches {
+            report.findings.extend(batch.candidates.iter().cloned());
+        }
+        return Ok(report);
+    }
+
     let mut report = RunReport::default();
+    if resolve_mode == ResolveMode::Upgrade {
+        report.upgraded = all_resolved.len();
+    }
     let mut graph_pins = Vec::new();
     let mut staged: Vec<StagedRewrite> = Vec::new();
 
@@ -134,11 +192,11 @@ pub fn pin_with_filter(
                 staged.push(StagedRewrite { rewrite });
             }
         }
-        report.findings.extend(batch.floating.iter().cloned());
+        report.findings.extend(batch.candidates.iter().cloned());
         graph_pins.extend(pins_for_full_graph(
             &batch.all_findings,
             &batch.resolved,
-            &lock_pins,
+            &prior_lock,
             policy,
             &opts.repo,
         ));
@@ -146,7 +204,7 @@ pub fn pin_with_filter(
 
     // Preserve prior lock entries for ecosystems not visited this run, then overlay
     // selected-ecosystem graph pins and dedupe by (ecosystem, path, name).
-    let mut combined: Vec<Pin> = lock_pins
+    let mut combined: Vec<Pin> = prior_lock
         .into_iter()
         .filter(|pin| !selected_kinds.contains(&pin.ecosystem))
         .collect();
@@ -168,6 +226,13 @@ pub fn pin_with_filter(
     report.rewrites = staged.into_iter().map(|s| s.rewrite).collect();
 
     Ok(report)
+}
+
+fn is_unchanged_upgrade(pin: &Pin) -> bool {
+    pin.metadata
+        .get("previous")
+        .and_then(|v| v.as_str())
+        .is_some_and(|prev| prev == pin.pinned)
 }
 
 pub fn check(
@@ -317,21 +382,24 @@ fn pins_for_full_graph(
 ) -> Vec<Pin> {
     let mut pins = Vec::new();
     for finding in all_findings {
+        // Prefer a resolved pin when present (floating pin + exact upgrade bumps).
+        if let Some(pin) = resolved.iter().find(|pin| same_item(finding, pin)) {
+            pins.push(Pin {
+                ecosystem: pin.ecosystem,
+                name: pin.name.clone(),
+                // Lock mirrors the rewritten source: requested == pinned.
+                requested: pin.pinned.clone(),
+                pinned: pin.pinned.clone(),
+                path: repo_relative(repo, &pin.path),
+                evidence: pin.evidence,
+                metadata: pin.metadata.clone(),
+            });
+            continue;
+        }
+
         if finding.is_floating {
             if is_allowlisted(finding, policy, repo) {
                 continue;
-            }
-            // Lock mirrors the rewritten source: requested == pinned.
-            if let Some(pin) = resolved.iter().find(|pin| same_item(finding, pin)) {
-                pins.push(Pin {
-                    ecosystem: pin.ecosystem,
-                    name: pin.name.clone(),
-                    requested: pin.pinned.clone(),
-                    pinned: pin.pinned.clone(),
-                    path: repo_relative(repo, &pin.path),
-                    evidence: pin.evidence,
-                    metadata: pin.metadata.clone(),
-                });
             }
             continue;
         }

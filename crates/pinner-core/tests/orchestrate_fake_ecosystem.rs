@@ -2,12 +2,13 @@ use std::path::Path;
 use std::sync::Arc;
 
 use pinner_core::lock::LockFile;
-use pinner_core::orchestrate::{RunOptions, check, pin};
+use pinner_core::orchestrate::{RunOptions, check, pin, upgrade};
 use pinner_core::policy::Policy;
 use pinner_ecosystem::{
     Ecosystem, EcosystemCtx, EcosystemError, EcosystemKind, EvidenceKind, Finding, Manifest, Pin,
-    Rewrite,
+    ResolveMode, Rewrite,
 };
+use serde_json::{Map, Value};
 use tempfile::tempdir;
 
 struct FakeEco;
@@ -435,5 +436,111 @@ fn pin_writes_nothing_when_later_ecosystem_resolve_fails() {
     assert!(
         !dir.path().join("pinner.lock.json").exists(),
         "lock must not be written on resolve failure"
+    );
+}
+
+/// Exact-pin fixture: upgrade resolves to a newer version; pin ignores exact findings.
+struct FakeExactUpgradeEco;
+
+impl Ecosystem for FakeExactUpgradeEco {
+    fn kind(&self) -> EcosystemKind {
+        EcosystemKind::Mise
+    }
+
+    fn discover(&self, repo: &Path) -> Result<Vec<Manifest>, EcosystemError> {
+        Ok(vec![Manifest {
+            ecosystem: self.kind(),
+            path: repo.join(".mise.toml"),
+        }])
+    }
+
+    fn extract(
+        &self,
+        manifest: &Manifest,
+        _ctx: &EcosystemCtx<'_>,
+    ) -> Result<Vec<Finding>, EcosystemError> {
+        let text = std::fs::read_to_string(&manifest.path).unwrap();
+        let requested = if text.contains("2.0.0") {
+            "2.0.0"
+        } else {
+            "1.0.0"
+        };
+        Ok(vec![Finding {
+            ecosystem: EcosystemKind::Mise,
+            name: "tool".into(),
+            requested: requested.into(),
+            path: manifest.path.clone(),
+            is_floating: false,
+        }])
+    }
+
+    fn resolve(
+        &self,
+        findings: &[Finding],
+        ctx: &EcosystemCtx<'_>,
+    ) -> Result<Vec<Pin>, EcosystemError> {
+        if ctx.resolve_mode != ResolveMode::Upgrade {
+            return Ok(Vec::new());
+        }
+        findings
+            .iter()
+            .map(|f| {
+                let mut metadata = Map::new();
+                metadata.insert("upgrade".into(), Value::Bool(true));
+                metadata.insert("previous".into(), Value::String(f.requested.clone()));
+                metadata.insert("upgrade_channel".into(), Value::String("tool".into()));
+                Ok(Pin {
+                    ecosystem: f.ecosystem,
+                    name: f.name.clone(),
+                    requested: f.requested.clone(),
+                    pinned: "2.0.0".into(),
+                    path: f.path.clone(),
+                    evidence: EvidenceKind::Tool,
+                    metadata,
+                })
+            })
+            .collect()
+    }
+
+    fn rewrite(
+        &self,
+        manifest: &Manifest,
+        pins: &[Pin],
+    ) -> Result<Option<Rewrite>, EcosystemError> {
+        let pin = &pins[0];
+        Ok(Some(Rewrite {
+            path: manifest.path.clone(),
+            new_contents: format!("[tools]\ntool = \"{}\"\n", pin.pinned),
+        }))
+    }
+}
+
+#[test]
+fn upgrade_rewrites_exact_pins_pin_does_not() {
+    let dir = tempdir().unwrap();
+    let manifest = dir.path().join(".mise.toml");
+    std::fs::write(&manifest, "[tools]\ntool = \"1.0.0\"\n").unwrap();
+    let eco: Arc<dyn Ecosystem> = Arc::new(FakeExactUpgradeEco);
+    let policy = Policy::default_policy();
+    let opts = options(dir.path());
+
+    let report = upgrade(&[Arc::clone(&eco)], &policy, &opts).unwrap();
+    assert!(
+        report.upgraded >= 1,
+        "upgrade must count at least one bump, got {}",
+        report.upgraded
+    );
+    let body = std::fs::read_to_string(&manifest).unwrap();
+    assert!(
+        body.contains("2.0.0"),
+        "upgrade must rewrite exact pin, body={body}"
+    );
+
+    std::fs::write(&manifest, "[tools]\ntool = \"1.0.0\"\n").unwrap();
+    pin(&[eco], &policy, &opts).unwrap();
+    let body = std::fs::read_to_string(&manifest).unwrap();
+    assert!(
+        body.contains("1.0.0") && !body.contains("2.0.0"),
+        "pin must leave exact pins alone, body={body}"
     );
 }
