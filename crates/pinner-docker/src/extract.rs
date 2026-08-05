@@ -125,7 +125,7 @@ pub(crate) fn image_name(image: &str) -> String {
     image.to_string()
 }
 
-fn find_tag_colon(image: &str) -> Option<usize> {
+pub(crate) fn find_tag_colon(image: &str) -> Option<usize> {
     // Prefer last ':' after the final '/'; if none, last ':' only when no '/'.
     let after_slash = image.rfind('/').map(|i| i + 1).unwrap_or(0);
     image[after_slash..].rfind(':').map(|i| after_slash + i)

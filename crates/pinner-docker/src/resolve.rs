@@ -1,10 +1,14 @@
 use std::collections::HashMap;
 use std::env;
 
-use pinner_ecosystem::{EcosystemCtx, EcosystemError, EcosystemKind, EvidenceKind, Finding, Pin};
+use pinner_ecosystem::{
+    EcosystemCtx, EcosystemError, EcosystemKind, EvidenceKind, Finding, Pin, ResolveMode,
+    upgrade_pin,
+};
 use pinner_toolchain::{CommandRunner, RealCommandRunner};
 
 use crate::DockerEcosystem;
+use crate::extract::find_tag_colon;
 
 impl DockerEcosystem {
     pub(crate) fn resolve_findings(
@@ -16,7 +20,9 @@ impl DockerEcosystem {
         let map = resolve_map_from_env();
         let mut pins = Vec::with_capacity(findings.len());
         for finding in findings {
-            pins.push(resolve_one(&runner, finding, ctx, &map)?);
+            if let Some(pin) = resolve_one(&runner, finding, ctx, &map)? {
+                pins.push(pin);
+            }
         }
         Ok(pins)
     }
@@ -27,13 +33,17 @@ fn resolve_one(
     finding: &Finding,
     ctx: &EcosystemCtx<'_>,
     map: &HashMap<String, String>,
-) -> Result<Pin, EcosystemError> {
+) -> Result<Option<Pin>, EcosystemError> {
+    if ctx.resolve_mode == ResolveMode::Upgrade {
+        return resolve_upgrade(runner, finding, ctx, map);
+    }
+
     if let Some(lock) = ctx.lock_pins.iter().find(|pin| {
         pin.ecosystem == EcosystemKind::Docker
             && pin.name == finding.name
             && pin.requested == finding.requested
     }) {
-        return Ok(Pin {
+        return Ok(Some(Pin {
             ecosystem: EcosystemKind::Docker,
             name: finding.name.clone(),
             requested: finding.requested.clone(),
@@ -41,12 +51,12 @@ fn resolve_one(
             path: finding.path.clone(),
             evidence: EvidenceKind::Lock,
             metadata: lock.metadata.clone(),
-        });
+        }));
     }
 
     // PINNER_DOCKER_RESOLVE_MAP is checked before docker inspect/registry (test seam).
     if let Some(pinned) = map.get(&finding.requested) {
-        return Ok(registry_pin(finding, pinned.clone()));
+        return Ok(Some(registry_pin(finding, pinned.clone())));
     }
 
     if ctx.offline {
@@ -57,7 +67,7 @@ fn resolve_one(
     }
 
     if let Some(pinned) = resolve_via_docker_inspect(runner, &finding.requested) {
-        return Ok(Pin {
+        return Ok(Some(Pin {
             ecosystem: EcosystemKind::Docker,
             name: finding.name.clone(),
             requested: finding.requested.clone(),
@@ -65,7 +75,7 @@ fn resolve_one(
             path: finding.path.clone(),
             evidence: EvidenceKind::Tool,
             metadata: Default::default(),
-        });
+        }));
     }
 
     let pinned = resolve_via_registry(runner, &finding.requested).map_err(|hint| {
@@ -75,7 +85,85 @@ fn resolve_one(
             hint,
         }
     })?;
-    Ok(registry_pin(finding, pinned))
+    Ok(Some(registry_pin(finding, pinned)))
+}
+
+fn resolve_upgrade(
+    runner: &dyn CommandRunner,
+    finding: &Finding,
+    ctx: &EcosystemCtx<'_>,
+    map: &HashMap<String, String>,
+) -> Result<Option<Pin>, EcosystemError> {
+    // Digest-only without tag metadata cannot be re-resolved to a fresh digest.
+    let Some(inspect_ref) = upgrade_image_ref(&finding.requested) else {
+        return Ok(None);
+    };
+
+    let previous = previous_for_upgrade(finding, ctx);
+
+    if let Some(newest) = map_lookup_docker(map, finding, &inspect_ref) {
+        return Ok(upgrade_pin(
+            finding,
+            &previous,
+            &newest,
+            EvidenceKind::Registry,
+            "map",
+        ));
+    }
+
+    if ctx.offline {
+        return Err(EcosystemError::Offline {
+            name: finding.name.clone(),
+            requested: finding.requested.clone(),
+        });
+    }
+
+    let newest = if let Some(pinned) = resolve_via_docker_inspect(runner, &inspect_ref) {
+        pinned
+    } else {
+        resolve_via_registry(runner, &inspect_ref).map_err(|hint| EcosystemError::Resolve {
+            name: finding.name.clone(),
+            requested: finding.requested.clone(),
+            hint,
+        })?
+    };
+
+    Ok(upgrade_pin(
+        finding,
+        &previous,
+        &newest,
+        EvidenceKind::Registry,
+        "docker",
+    ))
+}
+
+fn map_lookup_docker(
+    map: &HashMap<String, String>,
+    finding: &Finding,
+    inspect_ref: &str,
+) -> Option<String> {
+    map.get(&finding.requested)
+        .cloned()
+        .or_else(|| map.get(inspect_ref).cloned())
+}
+
+/// Tag/name form to re-resolve. Digest-only (`name@sha256:…` without `:tag`) → None.
+fn upgrade_image_ref(requested: &str) -> Option<String> {
+    let requested = requested.trim();
+    if requested.is_empty() {
+        return None;
+    }
+    if let Some((left, _digest)) = requested.split_once("@sha256:") {
+        if find_tag_colon(left).is_some() {
+            return Some(left.to_string());
+        }
+        return None;
+    }
+    Some(requested.to_string())
+}
+
+fn previous_for_upgrade(finding: &Finding, _ctx: &EcosystemCtx<'_>) -> String {
+    finding.requested.clone()
 }
 
 fn registry_pin(finding: &Finding, pinned: String) -> Pin {
@@ -193,7 +281,7 @@ fn parse_resolve_map(raw: &str) -> HashMap<String, String> {
 
 #[cfg(test)]
 mod tests {
-    use super::{normalize_digest_ref, parse_resolve_map};
+    use super::{normalize_digest_ref, parse_resolve_map, upgrade_image_ref};
 
     #[test]
     fn parse_resolve_map_entries() {
@@ -227,6 +315,27 @@ mod tests {
             )
             .as_deref(),
             Some("alpine@sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb")
+        );
+    }
+
+    #[test]
+    fn upgrade_image_ref_skips_digest_only() {
+        assert_eq!(
+            upgrade_image_ref(
+                "python@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+            ),
+            None
+        );
+        assert_eq!(
+            upgrade_image_ref(
+                "python:3.12@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+            )
+            .as_deref(),
+            Some("python:3.12")
+        );
+        assert_eq!(
+            upgrade_image_ref("python:3.12").as_deref(),
+            Some("python:3.12")
         );
     }
 }

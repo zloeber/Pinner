@@ -36,7 +36,12 @@ Core passes `ResolveMode::Upgrade` with empty `lock_pins`. Each ecosystem must s
 
 ## Verify
 
-- [ ] Map forces newer version while lock/native would keep old
-- [ ] Unchanged map → empty pins
-- [ ] Offline without map errors (does not freeze on native lock)
-- [ ] `cargo test -p pinner-<eco>` and clippy clean
+- [x] Map forces newer version while lock/native would keep old
+- [x] Unchanged map → empty pins
+- [x] Offline without map errors (does not freeze on native lock)
+- [x] `cargo test -p pinner-<eco>` and clippy clean
+
+## Ecosystems covered
+
+- python, node (Task 6)
+- mise, docker, actions (Task 7) — docker/actions skip digest-only without tag metadata
