@@ -1,13 +1,16 @@
 use std::collections::HashMap;
 use std::env;
 
-use pinner_ecosystem::{EcosystemCtx, EcosystemError, EcosystemKind, EvidenceKind, Finding, Pin};
+use pinner_ecosystem::{
+    EcosystemCtx, EcosystemError, EcosystemKind, EvidenceKind, Finding, Pin, ResolveMode,
+    upgrade_pin,
+};
 use pinner_iac_common::{parse_resolve_map, resolve_image_digest, resolve_map_lookup};
 use pinner_toolchain::{CommandRunner, RealCommandRunner};
 use serde_json::{Map, Value};
 
 use crate::AzureEcosystem;
-use crate::extract::is_task_finding;
+use crate::extract::{is_exact_task_version, is_task_finding, parse_task_ref};
 
 impl AzureEcosystem {
     pub(crate) fn resolve_findings(
@@ -20,7 +23,9 @@ impl AzureEcosystem {
         let azure_map = azure_resolve_map_from_env();
         let mut pins = Vec::with_capacity(findings.len());
         for finding in findings {
-            pins.push(resolve_one(&runner, finding, ctx, &docker_map, &azure_map)?);
+            if let Some(pin) = resolve_one(&runner, finding, ctx, &docker_map, &azure_map)? {
+                pins.push(pin);
+            }
         }
         Ok(pins)
     }
@@ -32,13 +37,17 @@ fn resolve_one(
     ctx: &EcosystemCtx<'_>,
     docker_map: &HashMap<String, String>,
     azure_map: &HashMap<String, String>,
-) -> Result<Pin, EcosystemError> {
+) -> Result<Option<Pin>, EcosystemError> {
+    if ctx.resolve_mode == ResolveMode::Upgrade {
+        return resolve_upgrade(runner, finding, ctx, docker_map, azure_map);
+    }
+
     if let Some(lock) = ctx.lock_pins.iter().find(|pin| {
         pin.ecosystem == EcosystemKind::Azure
             && pin.name == finding.name
             && pin.requested == finding.requested
     }) {
-        return Ok(Pin {
+        return Ok(Some(Pin {
             ecosystem: EcosystemKind::Azure,
             name: finding.name.clone(),
             requested: finding.requested.clone(),
@@ -46,13 +55,27 @@ fn resolve_one(
             path: finding.path.clone(),
             evidence: EvidenceKind::Lock,
             metadata: lock.metadata.clone(),
-        });
+        }));
     }
 
     if is_task_finding(finding) {
-        resolve_task(finding, ctx, azure_map)
+        resolve_task(finding, ctx, azure_map).map(Some)
     } else {
-        resolve_image(runner, finding, ctx, docker_map, azure_map)
+        resolve_image(runner, finding, ctx, docker_map, azure_map).map(Some)
+    }
+}
+
+fn resolve_upgrade(
+    runner: &dyn CommandRunner,
+    finding: &Finding,
+    ctx: &EcosystemCtx<'_>,
+    docker_map: &HashMap<String, String>,
+    azure_map: &HashMap<String, String>,
+) -> Result<Option<Pin>, EcosystemError> {
+    if is_task_finding(finding) {
+        resolve_task_upgrade(finding, ctx, azure_map)
+    } else {
+        resolve_image_upgrade(runner, finding, ctx, docker_map, azure_map)
     }
 }
 
@@ -93,6 +116,60 @@ fn resolve_image(
     Ok(azure_pin(finding, pinned, EvidenceKind::Tool, "image"))
 }
 
+fn resolve_image_upgrade(
+    runner: &dyn CommandRunner,
+    finding: &Finding,
+    ctx: &EcosystemCtx<'_>,
+    docker_map: &HashMap<String, String>,
+    azure_map: &HashMap<String, String>,
+) -> Result<Option<Pin>, EcosystemError> {
+    let Some(inspect_ref) = upgrade_image_ref(&finding.requested) else {
+        return Ok(None);
+    };
+
+    let previous = previous_for_image_upgrade(finding, ctx);
+
+    if let Some(newest) = docker_map
+        .get(&finding.requested)
+        .cloned()
+        .or_else(|| docker_map.get(&inspect_ref).cloned())
+        .or_else(|| resolve_map_lookup(azure_map, &finding.name, &finding.requested))
+        .or_else(|| azure_map.get(&finding.requested).cloned())
+    {
+        return Ok(upgrade_kind_pin(
+            finding,
+            &previous,
+            &newest,
+            EvidenceKind::Registry,
+            "map",
+            "image",
+        ));
+    }
+
+    if ctx.offline {
+        return Err(EcosystemError::Offline {
+            name: finding.name.clone(),
+            requested: finding.requested.clone(),
+        });
+    }
+
+    let newest =
+        resolve_image_digest(runner, &inspect_ref).map_err(|hint| EcosystemError::Resolve {
+            name: finding.name.clone(),
+            requested: finding.requested.clone(),
+            hint,
+        })?;
+
+    Ok(upgrade_kind_pin(
+        finding,
+        &previous,
+        &newest,
+        EvidenceKind::Tool,
+        "docker",
+        "image",
+    ))
+}
+
 fn resolve_task(
     finding: &Finding,
     ctx: &EcosystemCtx<'_>,
@@ -122,10 +199,48 @@ fn resolve_task(
         });
     }
 
+    // Gap: no Azure Marketplace / Visual Studio Marketplace HTTP resolver yet.
     Err(EcosystemError::Resolve {
         name: finding.name.clone(),
         requested: finding.requested.clone(),
-        hint: "set PINNER_AZURE_RESOLVE_MAP (Name@Name@Major=Name@x.y.z or Name@Major=x.y.z)"
+        hint: "set PINNER_AZURE_RESOLVE_MAP (Name@Name@Major=Name@x.y.z or Name@Major=x.y.z); Azure task marketplace HTTP upgrade is not implemented"
+            .into(),
+    })
+}
+
+fn resolve_task_upgrade(
+    finding: &Finding,
+    ctx: &EcosystemCtx<'_>,
+    azure_map: &HashMap<String, String>,
+) -> Result<Option<Pin>, EcosystemError> {
+    let previous = previous_for_task_upgrade(finding, ctx);
+
+    if let Some(mapped) = resolve_map_lookup(azure_map, &finding.name, &finding.requested)
+        .or_else(|| azure_map.get(&finding.requested).cloned())
+    {
+        let newest = normalize_task_pin(&finding.name, &mapped);
+        return Ok(upgrade_kind_pin(
+            finding,
+            &previous,
+            &newest,
+            EvidenceKind::Registry,
+            "map",
+            "task",
+        ));
+    }
+
+    if ctx.offline {
+        return Err(EcosystemError::Offline {
+            name: finding.name.clone(),
+            requested: finding.requested.clone(),
+        });
+    }
+
+    // Gap: map-only until marketplace/version HTTP exists (document in azure Gaps).
+    Err(EcosystemError::Resolve {
+        name: finding.name.clone(),
+        requested: finding.requested.clone(),
+        hint: "set PINNER_AZURE_RESOLVE_MAP (Name@Name@Major=Name@x.y.z or Name@Major=x.y.z); Azure task marketplace HTTP upgrade is not implemented"
             .into(),
     })
 }
@@ -133,10 +248,74 @@ fn resolve_task(
 /// Accept map values as `UseNode@1.2.3` or bare `1.2.3`.
 fn normalize_task_pin(name: &str, pinned: &str) -> String {
     let pinned = pinned.trim();
-    if let Some((n, ver)) = crate::extract::parse_task_ref(pinned) {
+    if let Some((n, ver)) = parse_task_ref(pinned) {
         return format!("{n}@{ver}");
     }
     format!("{name}@{pinned}")
+}
+
+fn upgrade_kind_pin(
+    finding: &Finding,
+    previous: &str,
+    newest: &str,
+    evidence: EvidenceKind,
+    channel: &str,
+    kind: &str,
+) -> Option<Pin> {
+    let mut pin = upgrade_pin(finding, previous, newest, evidence, channel)?;
+    pin.metadata
+        .insert("kind".into(), Value::String(kind.to_string()));
+    Some(pin)
+}
+
+fn previous_for_image_upgrade(finding: &Finding, ctx: &EcosystemCtx<'_>) -> String {
+    if finding.requested.contains("@sha256:") {
+        return finding.requested.clone();
+    }
+    if let Some(lock) = ctx.lock_pins.iter().find(|pin| {
+        pin.ecosystem == EcosystemKind::Azure
+            && pin.name == finding.name
+            && pin.requested == finding.requested
+    }) {
+        return lock.pinned.clone();
+    }
+    finding.requested.clone()
+}
+
+fn previous_for_task_upgrade(finding: &Finding, ctx: &EcosystemCtx<'_>) -> String {
+    if let Some((_, ver)) = parse_task_ref(&finding.requested)
+        && is_exact_task_version(ver)
+    {
+        return finding.requested.clone();
+    }
+    if let Some(lock) = ctx.lock_pins.iter().find(|pin| {
+        pin.ecosystem == EcosystemKind::Azure
+            && pin.name == finding.name
+            && pin.requested == finding.requested
+    }) {
+        return lock.pinned.clone();
+    }
+    finding.requested.clone()
+}
+
+/// Tag/name form to re-resolve. Digest-only without `:tag` → None.
+fn upgrade_image_ref(requested: &str) -> Option<String> {
+    let requested = requested.trim();
+    if requested.is_empty() {
+        return None;
+    }
+    if let Some((left, _digest)) = requested.split_once("@sha256:") {
+        if image_has_tag(left) {
+            return Some(left.to_string());
+        }
+        return None;
+    }
+    Some(requested.to_string())
+}
+
+fn image_has_tag(image: &str) -> bool {
+    let after_slash = image.rfind('/').map(|i| i + 1).unwrap_or(0);
+    image[after_slash..].contains(':')
 }
 
 fn azure_pin(finding: &Finding, pinned: String, evidence: EvidenceKind, kind: &str) -> Pin {
@@ -189,7 +368,7 @@ fn parse_bare_resolve_map(raw: &str) -> HashMap<String, String> {
 
 #[cfg(test)]
 mod tests {
-    use super::{normalize_task_pin, parse_bare_resolve_map};
+    use super::{normalize_task_pin, parse_bare_resolve_map, upgrade_image_ref};
 
     #[test]
     fn parse_docker_style_map() {
@@ -208,6 +387,23 @@ mod tests {
         assert_eq!(
             normalize_task_pin("UseNode", "UseNode@1.2.3"),
             "UseNode@1.2.3"
+        );
+    }
+
+    #[test]
+    fn upgrade_image_ref_skips_digest_only() {
+        assert_eq!(
+            upgrade_image_ref(
+                "node@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+            ),
+            None
+        );
+        assert_eq!(
+            upgrade_image_ref(
+                "node:20@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+            )
+            .as_deref(),
+            Some("node:20")
         );
     }
 }

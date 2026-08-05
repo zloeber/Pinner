@@ -14,7 +14,7 @@ edges:
     condition: when setting up the dev environment or running the project for the first time
   - target: patterns/INDEX.md
     condition: when starting a task — check the pattern index for a matching pattern file
-last_updated: [YYYY-MM-DD]
+last_updated: 2026-08-05
 ---
 
 # Session Bootstrap
@@ -32,11 +32,11 @@ Then read this file fully before doing anything else in this session.
 
 **Working (partial):**
 - Core `upgrade` / `upgrade_with_filter` + CLI + walkthrough + `upgrade_pin`
-- Python/Node/Mise/Docker/Actions/Terraform/Helm/K8s/Cargo/Go/Ruby Upgrade resolve (`PINNER_*_RESOLVE_MAP` → tool/registry) — remaining: gitlab/azure
+- All ecosystem Upgrade resolve paths (python→azure) via `PINNER_*_RESOLVE_MAP` → tool/registry — docs/Task 11 still open
 
 **Not yet built:**
 - Full `.mex/` pattern library (index still scaffold-level)
-- Remaining per-ecosystem Upgrade resolve (gitlab/azure) + docs — design + plan at `docs/superpowers/specs/2026-08-05-upgrade-subcommand-design.md` and `docs/superpowers/plans/2026-08-05-upgrade-subcommand.md`
+- Upgrade docs (README + guide ecosystems + skill) — design + plan at `docs/superpowers/specs/2026-08-05-upgrade-subcommand-design.md` and `docs/superpowers/plans/2026-08-05-upgrade-subcommand.md`
 
 **Known issues:**
 - Semantic-release tag push requires a valid classic `PAT_TOKEN` (repo secret); expired/wrong-scope PATs fail at push, not checkout

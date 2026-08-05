@@ -1,7 +1,9 @@
 use std::path::{Path, PathBuf};
 use std::sync::{Mutex, OnceLock};
 
-use pinner_ecosystem::{Ecosystem, EcosystemCtx, ResolveMode};
+use pinner_ecosystem::{
+    Ecosystem, EcosystemCtx, EcosystemKind, EvidenceKind, Finding, Pin, ResolveMode,
+};
 use pinner_gitlab::GitlabEcosystem;
 
 fn env_lock() -> &'static Mutex<()> {
@@ -11,6 +13,10 @@ fn env_lock() -> &'static Mutex<()> {
 
 fn fixture_dir() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../tests/fixtures/gitlab-floating")
+}
+
+fn upgrade_fixture() -> PathBuf {
+    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../tests/fixtures/gitlab-upgrade")
 }
 
 fn ctx(repo: &Path) -> EcosystemCtx<'_> {
@@ -230,4 +236,222 @@ include:
     let findings = eco.extract(&manifests[0], &ctx).unwrap();
     assert_eq!(findings.len(), 2);
     assert!(findings.iter().all(|f| !f.is_floating), "{findings:?}");
+}
+
+#[test]
+fn upgrade_prefers_resolve_map_over_lock() {
+    let _guard = env_lock().lock().unwrap();
+    let old_digest =
+        "node:20@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+    let new_digest = "node@sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc";
+    let old_sha = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
+    let new_sha = "dddddddddddddddddddddddddddddddddddddddd";
+    // SAFETY: test-only resolve seams; serialized via env_lock.
+    unsafe {
+        std::env::set_var(
+            "PINNER_DOCKER_RESOLVE_MAP",
+            format!("{old_digest}={new_digest},node:20={new_digest}"),
+        );
+        std::env::set_var(
+            "PINNER_GITLAB_RESOLVE_MAP",
+            format!("group/ci-templates@group/ci-templates@{old_sha}=group/ci-templates@{new_sha}"),
+        );
+    }
+
+    let eco = GitlabEcosystem;
+    let repo = upgrade_fixture();
+    let stale_lock = [
+        Pin {
+            ecosystem: EcosystemKind::Gitlab,
+            name: "node".into(),
+            requested: old_digest.into(),
+            pinned: old_digest.into(),
+            path: PathBuf::from(".gitlab-ci.yml"),
+            evidence: EvidenceKind::Lock,
+            metadata: Default::default(),
+        },
+        Pin {
+            ecosystem: EcosystemKind::Gitlab,
+            name: "group/ci-templates".into(),
+            requested: format!("group/ci-templates@{old_sha}"),
+            pinned: format!("group/ci-templates@{old_sha}"),
+            path: PathBuf::from(".gitlab-ci.yml"),
+            evidence: EvidenceKind::Lock,
+            metadata: Default::default(),
+        },
+    ];
+    let ctx = EcosystemCtx {
+        repo: &repo,
+        lock_pins: &stale_lock,
+        offline: true,
+        pin_exact_ranges: true,
+        resolve_mode: ResolveMode::Upgrade,
+    };
+    let findings = [
+        Finding {
+            ecosystem: EcosystemKind::Gitlab,
+            name: "node".into(),
+            requested: old_digest.into(),
+            path: PathBuf::from(".gitlab-ci.yml"),
+            is_floating: false,
+        },
+        Finding {
+            ecosystem: EcosystemKind::Gitlab,
+            name: "group/ci-templates".into(),
+            requested: format!("group/ci-templates@{old_sha}"),
+            path: PathBuf::from(".gitlab-ci.yml"),
+            is_floating: false,
+        },
+    ];
+    let pins = eco.resolve(&findings, &ctx);
+    unsafe {
+        std::env::remove_var("PINNER_DOCKER_RESOLVE_MAP");
+        std::env::remove_var("PINNER_GITLAB_RESOLVE_MAP");
+    }
+    let pins = pins.unwrap();
+    assert_eq!(pins.len(), 2, "{pins:?}");
+    let image = pins.iter().find(|p| p.name == "node").unwrap();
+    assert_eq!(image.pinned, new_digest);
+    assert_eq!(image.metadata["previous"], old_digest);
+    assert_eq!(image.metadata["upgrade"], true);
+    assert_eq!(image.metadata["upgrade_channel"], "map");
+    assert_eq!(image.metadata["kind"], "image");
+    assert_ne!(image.evidence, EvidenceKind::Lock);
+
+    let include = pins
+        .iter()
+        .find(|p| p.name == "group/ci-templates")
+        .unwrap();
+    assert_eq!(include.pinned, format!("group/ci-templates@{new_sha}"));
+    assert_eq!(
+        include.metadata["previous"],
+        format!("group/ci-templates@{old_sha}")
+    );
+    assert_eq!(include.metadata["kind"], "include");
+    assert_ne!(include.evidence, EvidenceKind::Lock);
+}
+
+#[test]
+fn upgrade_omits_when_map_matches_previous() {
+    let _guard = env_lock().lock().unwrap();
+    let digest = "node:20@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+    let sha = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
+    // SAFETY: test-only resolve seams; serialized via env_lock.
+    unsafe {
+        std::env::set_var(
+            "PINNER_DOCKER_RESOLVE_MAP",
+            format!("{digest}={digest},node:20={digest}"),
+        );
+        std::env::set_var(
+            "PINNER_GITLAB_RESOLVE_MAP",
+            format!("group/ci-templates@group/ci-templates@{sha}=group/ci-templates@{sha}"),
+        );
+    }
+    let eco = GitlabEcosystem;
+    let repo = upgrade_fixture();
+    let ctx = EcosystemCtx {
+        repo: &repo,
+        lock_pins: &[],
+        offline: true,
+        pin_exact_ranges: true,
+        resolve_mode: ResolveMode::Upgrade,
+    };
+    let findings = [
+        Finding {
+            ecosystem: EcosystemKind::Gitlab,
+            name: "node".into(),
+            requested: digest.into(),
+            path: PathBuf::from(".gitlab-ci.yml"),
+            is_floating: false,
+        },
+        Finding {
+            ecosystem: EcosystemKind::Gitlab,
+            name: "group/ci-templates".into(),
+            requested: format!("group/ci-templates@{sha}"),
+            path: PathBuf::from(".gitlab-ci.yml"),
+            is_floating: false,
+        },
+    ];
+    let pins = eco.resolve(&findings, &ctx);
+    unsafe {
+        std::env::remove_var("PINNER_DOCKER_RESOLVE_MAP");
+        std::env::remove_var("PINNER_GITLAB_RESOLVE_MAP");
+    }
+    let pins = pins.unwrap();
+    assert!(
+        pins.is_empty(),
+        "unchanged upgrade must be omitted, got {pins:?}"
+    );
+}
+
+#[test]
+fn upgrade_digest_only_without_tag_skips() {
+    let _guard = env_lock().lock().unwrap();
+    unsafe {
+        std::env::remove_var("PINNER_DOCKER_RESOLVE_MAP");
+        std::env::remove_var("PINNER_GITLAB_RESOLVE_MAP");
+    }
+    let eco = GitlabEcosystem;
+    let repo = upgrade_fixture();
+    let ctx = EcosystemCtx {
+        repo: &repo,
+        lock_pins: &[],
+        offline: true,
+        pin_exact_ranges: true,
+        resolve_mode: ResolveMode::Upgrade,
+    };
+    let finding = Finding {
+        ecosystem: EcosystemKind::Gitlab,
+        name: "node".into(),
+        requested: "node@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+            .into(),
+        path: PathBuf::from(".gitlab-ci.yml"),
+        is_floating: false,
+    };
+    let pins = eco.resolve(&[finding], &ctx).unwrap();
+    assert!(
+        pins.is_empty(),
+        "digest-only without tag must skip, got {pins:?}"
+    );
+}
+
+#[test]
+fn upgrade_offline_without_map_ignores_lock() {
+    let _guard = env_lock().lock().unwrap();
+    unsafe {
+        std::env::remove_var("PINNER_DOCKER_RESOLVE_MAP");
+        std::env::remove_var("PINNER_GITLAB_RESOLVE_MAP");
+    }
+    let eco = GitlabEcosystem;
+    let repo = upgrade_fixture();
+    let old_sha = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
+    let stale_lock = [Pin {
+        ecosystem: EcosystemKind::Gitlab,
+        name: "group/ci-templates".into(),
+        requested: format!("group/ci-templates@{old_sha}"),
+        pinned: format!("group/ci-templates@{old_sha}"),
+        path: PathBuf::from(".gitlab-ci.yml"),
+        evidence: EvidenceKind::Lock,
+        metadata: Default::default(),
+    }];
+    let ctx = EcosystemCtx {
+        repo: &repo,
+        lock_pins: &stale_lock,
+        offline: true,
+        pin_exact_ranges: true,
+        resolve_mode: ResolveMode::Upgrade,
+    };
+    let finding = Finding {
+        ecosystem: EcosystemKind::Gitlab,
+        name: "group/ci-templates".into(),
+        requested: format!("group/ci-templates@{old_sha}"),
+        path: PathBuf::from(".gitlab-ci.yml"),
+        is_floating: false,
+    };
+    let err = eco.resolve(&[finding], &ctx).unwrap_err();
+    let msg = err.to_string();
+    assert!(
+        msg.contains("offline") || msg.contains("PINNER_GITLAB_RESOLVE_MAP"),
+        "upgrade must not freeze on lock; got {msg}"
+    );
 }

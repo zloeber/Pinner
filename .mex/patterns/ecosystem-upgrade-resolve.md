@@ -49,3 +49,4 @@ Core passes `ResolveMode::Upgrade` with empty `lock_pins`. Each ecosystem must s
 - mise, docker, actions (Task 7) — docker/actions skip digest-only without tag metadata
 - terraform, helm, k8s (Task 8) — terraform registry uses unconstrained `*`; git modules `ls-remote HEAD`; `.terraform.lock.hcl` ignored in upgrade; helm/k8s images skip digest-only without tag; helm chart pins must keep `repository` metadata after `upgrade_pin`
 - cargo, go, ruby (Task 9) — cargo crates.io `max_version` HTTP (path/git skipped at extract); go prefers `go list -m -u -json` then proxy.golang.org; ruby RubyGems latest JSON; reuse `pinner-iac-common::http_get`; network tests behind `PINNER_NETWORK=1`
+- gitlab, azure (Task 10) — images → digests (skip digest-only without tag); gitlab includes → map then `git ls-remote` HEAD; azure tasks → map-only (no marketplace HTTP yet — Gaps); preserve `kind` metadata after `upgrade_pin`
