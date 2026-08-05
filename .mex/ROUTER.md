@@ -31,11 +31,12 @@ Then read this file fully before doing anything else in this session.
 - Workflows use Node 24 action majors (`checkout@v5`, `mise-action@v4`, artifact/pages v5–v7)
 
 **Working (partial):**
-- Core `upgrade` / `upgrade_with_filter` in `pinner-core` (`ResolveMode::Upgrade`, `RunReport.upgraded`) — CLI/ecosystem resolve branches still outstanding
+- Core `upgrade` / `upgrade_with_filter` + CLI + walkthrough + `upgrade_pin`
+- Python/Node Upgrade resolve (`PINNER_PYTHON_RESOLVE_MAP` / `PINNER_NODE_RESOLVE_MAP` → uv / `npm view`) — other ecosystems still outstanding
 
 **Not yet built:**
 - Full `.mex/` pattern library (index still scaffold-level)
-- `pinner upgrade` CLI + per-ecosystem Upgrade resolve + docs — design + plan at `docs/superpowers/specs/2026-08-05-upgrade-subcommand-design.md` and `docs/superpowers/plans/2026-08-05-upgrade-subcommand.md`
+- Remaining per-ecosystem Upgrade resolve + docs — design + plan at `docs/superpowers/specs/2026-08-05-upgrade-subcommand-design.md` and `docs/superpowers/plans/2026-08-05-upgrade-subcommand.md`
 
 **Known issues:**
 - Semantic-release tag push requires a valid classic `PAT_TOKEN` (repo secret); expired/wrong-scope PATs fail at push, not checkout

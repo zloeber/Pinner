@@ -1,13 +1,23 @@
 use pinner_ecosystem::{
-    Ecosystem, EcosystemCtx, EcosystemKind, EvidenceKind, Finding, ResolveMode,
+    Ecosystem, EcosystemCtx, EcosystemKind, EvidenceKind, Finding, Pin, ResolveMode,
 };
 use pinner_node::NodeEcosystem;
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::sync::{Mutex, OnceLock};
 use tempfile::tempdir;
+
+fn env_lock() -> &'static Mutex<()> {
+    static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+    LOCK.get_or_init(|| Mutex::new(()))
+}
 
 fn fixture() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../tests/fixtures/node-floating")
+}
+
+fn upgrade_fixture() -> PathBuf {
+    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../tests/fixtures/node-upgrade")
 }
 
 #[test]
@@ -134,4 +144,113 @@ fn resolves_from_yarn_lock_when_package_lock_absent() {
     let pins = eco.resolve(&[finding], &ctx).unwrap();
     assert_eq!(pins[0].pinned, "2.1.3");
     assert_eq!(pins[0].evidence, EvidenceKind::NativeLock);
+}
+
+#[test]
+fn upgrade_prefers_resolve_map_over_native_lock() {
+    let _guard = env_lock().lock().unwrap();
+    // SAFETY: test-only resolve seam; serialized via env_lock.
+    unsafe {
+        std::env::set_var("PINNER_NODE_RESOLVE_MAP", "ms=2.1.3:2.1.4");
+    }
+    let eco = NodeEcosystem;
+    let repo = upgrade_fixture();
+    let stale_lock = [Pin {
+        ecosystem: EcosystemKind::Node,
+        name: "ms".into(),
+        requested: "2.1.3".into(),
+        pinned: "2.1.3".into(),
+        path: PathBuf::from("package.json"),
+        evidence: EvidenceKind::Lock,
+        metadata: Default::default(),
+    }];
+    let ctx = EcosystemCtx {
+        repo: &repo,
+        lock_pins: &stale_lock,
+        offline: true,
+        pin_exact_ranges: true,
+        resolve_mode: ResolveMode::Upgrade,
+    };
+    let finding = Finding {
+        ecosystem: EcosystemKind::Node,
+        name: "ms".into(),
+        requested: "2.1.3".into(),
+        path: PathBuf::from("package.json"),
+        is_floating: false,
+    };
+    let pins = eco.resolve(&[finding], &ctx).unwrap();
+    unsafe {
+        std::env::remove_var("PINNER_NODE_RESOLVE_MAP");
+    }
+    assert_eq!(pins.len(), 1);
+    assert_eq!(pins[0].pinned, "2.1.4");
+    assert_eq!(pins[0].metadata["previous"], "2.1.3");
+    assert_eq!(pins[0].metadata["upgrade"], true);
+    assert_eq!(pins[0].metadata["upgrade_channel"], "map");
+    assert_ne!(pins[0].evidence, EvidenceKind::Lock);
+    assert_ne!(pins[0].evidence, EvidenceKind::NativeLock);
+}
+
+#[test]
+fn upgrade_omits_when_map_matches_previous() {
+    let _guard = env_lock().lock().unwrap();
+    // SAFETY: test-only resolve seam; serialized via env_lock.
+    unsafe {
+        std::env::set_var("PINNER_NODE_RESOLVE_MAP", "ms=2.1.3:2.1.3");
+    }
+    let eco = NodeEcosystem;
+    let repo = upgrade_fixture();
+    let ctx = EcosystemCtx {
+        repo: &repo,
+        lock_pins: &[],
+        offline: true,
+        pin_exact_ranges: true,
+        resolve_mode: ResolveMode::Upgrade,
+    };
+    let finding = Finding {
+        ecosystem: EcosystemKind::Node,
+        name: "ms".into(),
+        requested: "2.1.3".into(),
+        path: PathBuf::from("package.json"),
+        is_floating: false,
+    };
+    let pins = eco.resolve(&[finding], &ctx).unwrap();
+    unsafe {
+        std::env::remove_var("PINNER_NODE_RESOLVE_MAP");
+    }
+    assert!(
+        pins.is_empty(),
+        "unchanged upgrade must be omitted, got {pins:?}"
+    );
+}
+
+#[test]
+fn upgrade_offline_without_map_ignores_native_lock() {
+    let _guard = env_lock().lock().unwrap();
+    // SAFETY: clear map so resolve cannot succeed via seam.
+    unsafe {
+        std::env::remove_var("PINNER_NODE_RESOLVE_MAP");
+    }
+    let eco = NodeEcosystem;
+    let repo = upgrade_fixture();
+    let ctx = EcosystemCtx {
+        repo: &repo,
+        lock_pins: &[],
+        offline: true,
+        pin_exact_ranges: true,
+        resolve_mode: ResolveMode::Upgrade,
+    };
+    let finding = Finding {
+        ecosystem: EcosystemKind::Node,
+        name: "ms".into(),
+        requested: "2.1.3".into(),
+        path: PathBuf::from("package.json"),
+        is_floating: false,
+    };
+    let err = eco.resolve(&[finding], &ctx).unwrap_err();
+    let msg = err.to_string();
+    assert!(
+        msg.contains("offline") || msg.contains("PINNER_NODE_RESOLVE_MAP"),
+        "upgrade must not freeze on native lock; got {msg}"
+    );
 }
