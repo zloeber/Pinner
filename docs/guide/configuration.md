@@ -31,6 +31,12 @@ Global flags: `--config`, `--offline`, `--dry-run`, `--ecosystem mise,terraform`
 
 `--ecosystem` only filters ecosystems that are already enabled in policy. Enable Helm/Kubernetes/GitLab/Azure with `helm = true` / `k8s = true` / `gitlab = true` / `azure = true` in `pinner.toml` before filtering.
 
+## Upgrade (v1)
+
+`pinner upgrade` uses the same globals and `[ecosystems]` enable flags as `pin` / `check`. There is **no** `[upgrade]` table and no new required `pinner.toml` keys in v1. `--ecosystem` still filters enabled kinds only.
+
+Upgrade skips native lock evidence (and Terraform `.terraform.lock.hcl`) so bumps target latest from preferred tools / registries / resolve maps — see [ecosystems](ecosystems/README.md).
+
 ## Agent vs walkthrough
 
 - `--agent` (or `--format json` / non-TTY): structured JSON, no prompts. Prefer this in automation and AI agent loops.

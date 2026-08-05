@@ -32,11 +32,11 @@ Then read this file fully before doing anything else in this session.
 
 **Working (partial):**
 - Core `upgrade` / `upgrade_with_filter` + CLI + walkthrough + `upgrade_pin`
-- All ecosystem Upgrade resolve paths (python→azure) via `PINNER_*_RESOLVE_MAP` → tool/registry — docs/Task 11 still open
+- All ecosystem Upgrade resolve paths (python→azure) via `PINNER_*_RESOLVE_MAP` → tool/registry
+- Upgrade docs: README matrix + mise `github:`/`cargo:` backends + 13 ecosystem guide pages + skill (Task 11)
 
 **Not yet built:**
 - Full `.mex/` pattern library (index still scaffold-level)
-- Upgrade docs (README + guide ecosystems + skill) — design + plan at `docs/superpowers/specs/2026-08-05-upgrade-subcommand-design.md` and `docs/superpowers/plans/2026-08-05-upgrade-subcommand.md`
 
 **Known issues:**
 - Semantic-release tag push requires a valid classic `PAT_TOKEN` (repo secret); expired/wrong-scope PATs fail at push, not checkout

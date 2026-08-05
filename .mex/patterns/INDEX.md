@@ -24,6 +24,7 @@ Lookup table for all pattern files in this directory. Check here before starting
 | Pattern | Use when |
 |---------|----------|
 | [core-upgrade-orchestration.md](core-upgrade-orchestration.md) | Adding or changing pinner-core `upgrade` / `upgrade_with_filter` orchestration |
+| [docs-upgrade-and-ecosystems.md](docs-upgrade-and-ecosystems.md) | README/guide/skill docs for upgrade + per-provider pages + mise backends |
 | [ecosystem-upgrade-resolve.md](ecosystem-upgrade-resolve.md) | Adding `ResolveMode::Upgrade` resolve branches in an ecosystem crate |
 | [fix-github-actions-node24.md](fix-github-actions-node24.md) | Node 20 Actions deprecation warnings or semantic-release PAT checkout auth failures |
 | [fix-release-locked-after-version-bump.md](fix-release-locked-after-version-bump.md) | release.yml fails `cargo build --locked` after rewriting workspace version from tag |
