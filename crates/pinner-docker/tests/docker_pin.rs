@@ -1,5 +1,5 @@
 use pinner_docker::DockerEcosystem;
-use pinner_ecosystem::{Ecosystem, EcosystemCtx};
+use pinner_ecosystem::{Ecosystem, EcosystemCtx, ResolveMode};
 use std::path::{Path, PathBuf};
 
 #[test]
@@ -19,6 +19,7 @@ fn extracts_floating_from_and_compose_image() {
         lock_pins: &[],
         offline: false,
         pin_exact_ranges: true,
+        resolve_mode: ResolveMode::Pin,
     };
     let manifests = eco.discover(&repo).unwrap();
     let findings: Vec<_> = manifests

@@ -1,6 +1,6 @@
 use std::path::{Path, PathBuf};
 
-use pinner_ecosystem::{Ecosystem, EcosystemCtx};
+use pinner_ecosystem::{Ecosystem, EcosystemCtx, ResolveMode};
 use pinner_mise::MiseEcosystem;
 
 #[test]
@@ -21,6 +21,7 @@ fn extracts_latest_as_floating() {
         lock_pins: &[],
         offline: false,
         pin_exact_ranges: true,
+        resolve_mode: ResolveMode::Pin,
     };
     let findings: Vec<_> = m
         .iter()

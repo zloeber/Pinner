@@ -2,7 +2,7 @@ use std::path::{Path, PathBuf};
 use std::sync::{Mutex, OnceLock};
 
 use pinner_actions::ActionsEcosystem;
-use pinner_ecosystem::{Ecosystem, EcosystemCtx};
+use pinner_ecosystem::{Ecosystem, EcosystemCtx, ResolveMode};
 
 fn env_lock() -> &'static Mutex<()> {
     static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
@@ -19,6 +19,7 @@ fn ctx<'a>(repo: &'a Path) -> EcosystemCtx<'a> {
         lock_pins: &[],
         offline: true,
         pin_exact_ranges: true,
+        resolve_mode: ResolveMode::Pin,
     }
 }
 
@@ -79,6 +80,7 @@ fn pins_action_tag_to_sha_with_comment() {
         lock_pins: &[],
         offline: false,
         pin_exact_ranges: true,
+        resolve_mode: ResolveMode::Pin,
     };
     let manifests = eco.discover(&repo).unwrap();
     let findings = eco.extract(&manifests[0], &ctx).unwrap();

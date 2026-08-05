@@ -1,4 +1,4 @@
-use pinner_ecosystem::{Ecosystem, EcosystemCtx, EcosystemKind, EvidenceKind, Manifest};
+use pinner_ecosystem::{Ecosystem, EcosystemCtx, ResolveMode, EcosystemKind, EvidenceKind, Manifest};
 use pinner_go::GoEcosystem;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -25,6 +25,7 @@ fn extracts_floating_go_requires() {
         lock_pins: &[],
         offline: true,
         pin_exact_ranges: true,
+        resolve_mode: ResolveMode::Pin,
     };
     let findings = eco.extract(&manifests[0], &ctx).unwrap();
     assert!(
@@ -48,6 +49,7 @@ fn resolves_from_go_sum_and_rewrites_exact() {
         lock_pins: &[],
         offline: true,
         pin_exact_ranges: true,
+        resolve_mode: ResolveMode::Pin,
     };
     let manifests = eco.discover(&repo).unwrap();
     let findings: Vec<_> = eco
@@ -110,6 +112,7 @@ fn resolves_from_pinner_go_resolve_map() {
         lock_pins: &[],
         offline: true,
         pin_exact_ranges: true,
+        resolve_mode: ResolveMode::Pin,
     };
     let manifests = eco.discover(dir.path()).unwrap();
     let findings = eco.extract(&manifests[0], &ctx).unwrap();
@@ -148,6 +151,7 @@ fn ignores_parent_go_sum_outside_repo() {
         lock_pins: &[],
         offline: true,
         pin_exact_ranges: true,
+        resolve_mode: ResolveMode::Pin,
     };
     let manifests = eco.discover(&repo).unwrap();
     let findings = eco.extract(&manifests[0], &ctx).unwrap();

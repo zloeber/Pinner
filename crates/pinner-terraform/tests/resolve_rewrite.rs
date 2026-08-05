@@ -1,7 +1,7 @@
 use std::path::{Path, PathBuf};
 use std::sync::{Mutex, OnceLock};
 
-use pinner_ecosystem::{Ecosystem, EcosystemCtx, EvidenceKind};
+use pinner_ecosystem::{Ecosystem, EcosystemCtx, ResolveMode, EvidenceKind};
 use pinner_terraform::TerraformEcosystem;
 
 fn env_lock() -> &'static Mutex<()> {
@@ -36,6 +36,7 @@ fn resolve_and_rewrite_via_env_map() {
         lock_pins: &[],
         offline: true,
         pin_exact_ranges: true,
+        resolve_mode: ResolveMode::Pin,
     };
 
     let manifests = eco.discover(tmp.path()).unwrap();
@@ -152,6 +153,7 @@ fn native_lock_wins_over_env_resolve_map() {
         lock_pins: &[],
         offline: true,
         pin_exact_ranges: true,
+        resolve_mode: ResolveMode::Pin,
     };
     let manifests = eco.discover(tmp.path()).unwrap();
     let findings: Vec<_> = manifests

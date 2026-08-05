@@ -2,7 +2,7 @@ use std::path::{Path, PathBuf};
 use std::sync::{Mutex, OnceLock};
 
 use pinner_azure::AzureEcosystem;
-use pinner_ecosystem::{Ecosystem, EcosystemCtx};
+use pinner_ecosystem::{Ecosystem, EcosystemCtx, ResolveMode};
 
 fn env_lock() -> &'static Mutex<()> {
     static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
@@ -19,6 +19,7 @@ fn ctx(repo: &Path) -> EcosystemCtx<'_> {
         lock_pins: &[],
         offline: true,
         pin_exact_ranges: true,
+        resolve_mode: ResolveMode::Pin,
     }
 }
 

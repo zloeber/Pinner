@@ -1,4 +1,4 @@
-use pinner_ecosystem::{Ecosystem, EcosystemCtx, EcosystemKind, EvidenceKind, Finding};
+use pinner_ecosystem::{Ecosystem, EcosystemCtx, ResolveMode, EcosystemKind, EvidenceKind, Finding};
 use pinner_node::NodeEcosystem;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -16,6 +16,7 @@ fn extracts_latest_and_caret_as_floating() {
         lock_pins: &[],
         offline: true,
         pin_exact_ranges: true,
+        resolve_mode: ResolveMode::Pin,
     };
     let manifests = eco.discover(&fixture()).unwrap();
     let findings: Vec<_> = manifests
@@ -38,6 +39,7 @@ fn resolves_from_package_lock_when_offline() {
         lock_pins: &[],
         offline: true,
         pin_exact_ranges: true,
+        resolve_mode: ResolveMode::Pin,
     };
     let manifests = eco.discover(&fixture()).unwrap();
     let findings = eco.extract(&manifests[0], &ctx).unwrap();
@@ -57,6 +59,7 @@ fn rewrite_sets_exact_versions() {
         lock_pins: &[],
         offline: true,
         pin_exact_ranges: true,
+        resolve_mode: ResolveMode::Pin,
     };
     let findings = eco.extract(&manifests[0], &ctx).unwrap();
     let pins = eco.resolve(&findings, &ctx).unwrap();
@@ -84,6 +87,7 @@ fn resolves_from_pnpm_lock_when_package_lock_absent() {
         lock_pins: &[],
         offline: true,
         pin_exact_ranges: true,
+        resolve_mode: ResolveMode::Pin,
     };
     let finding = Finding {
         ecosystem: EcosystemKind::Node,
@@ -116,6 +120,7 @@ fn resolves_from_yarn_lock_when_package_lock_absent() {
         lock_pins: &[],
         offline: true,
         pin_exact_ranges: true,
+        resolve_mode: ResolveMode::Pin,
     };
     let finding = Finding {
         ecosystem: EcosystemKind::Node,

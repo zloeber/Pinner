@@ -1,5 +1,5 @@
 use pinner_cargo::CargoEcosystem;
-use pinner_ecosystem::{Ecosystem, EcosystemCtx, EcosystemKind, EvidenceKind, Manifest};
+use pinner_ecosystem::{Ecosystem, EcosystemCtx, ResolveMode, EcosystemKind, EvidenceKind, Manifest};
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::{Mutex, OnceLock};
@@ -25,6 +25,7 @@ fn extracts_floating_cargo_deps() {
         lock_pins: &[],
         offline: true,
         pin_exact_ranges: true,
+        resolve_mode: ResolveMode::Pin,
     };
     let findings = eco.extract(&manifests[0], &ctx).unwrap();
     assert!(findings.iter().any(|f| f.name == "serde" && f.is_floating));
@@ -40,6 +41,7 @@ fn resolves_from_cargo_lock_and_rewrites_exact() {
         lock_pins: &[],
         offline: true,
         pin_exact_ranges: true,
+        resolve_mode: ResolveMode::Pin,
     };
     let manifests = eco.discover(&repo).unwrap();
     let findings: Vec<_> = eco
@@ -112,6 +114,7 @@ serde = "1"
         lock_pins: &[],
         offline: true,
         pin_exact_ranges: true,
+        resolve_mode: ResolveMode::Pin,
     };
     let manifests = eco.discover(dir.path()).unwrap();
     let findings = eco.extract(&manifests[0], &ctx).unwrap();
@@ -157,6 +160,7 @@ serde = "1"
         lock_pins: &[],
         offline: true,
         pin_exact_ranges: true,
+        resolve_mode: ResolveMode::Pin,
     };
     let manifests = eco.discover(&repo).unwrap();
     let findings = eco.extract(&manifests[0], &ctx).unwrap();

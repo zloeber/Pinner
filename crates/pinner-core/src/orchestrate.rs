@@ -4,8 +4,8 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use globset::Glob;
 use pinner_ecosystem::{
-    Ecosystem, EcosystemCtx, EcosystemKind, EvidenceKind, Finding, Manifest, Pin, Rewrite,
-    repo_relative,
+    Ecosystem, EcosystemCtx, EcosystemKind, EvidenceKind, Finding, Manifest, Pin, ResolveMode,
+    Rewrite, repo_relative,
 };
 
 use crate::error::CoreError;
@@ -65,6 +65,7 @@ pub fn pin_with_filter(
         lock_pins: &lock_pins,
         offline: opts.offline,
         pin_exact_ranges: policy.pin_exact_ranges,
+        resolve_mode: ResolveMode::Pin,
     };
 
     let selected: Vec<_> = selected_ecosystems(ecosystems, policy, opts).collect();
@@ -185,6 +186,7 @@ pub fn check(
         lock_pins: &lock_pins,
         offline: true,
         pin_exact_ranges: policy.pin_exact_ranges,
+        resolve_mode: ResolveMode::Pin,
     };
     let mut report = RunReport {
         pins: lock_pins.clone(),

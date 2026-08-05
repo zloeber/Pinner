@@ -2,7 +2,7 @@ use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, OnceLock};
 
 use pinner_ecosystem::{
-    Ecosystem, EcosystemCtx, EcosystemError, EcosystemKind, EvidenceKind, Finding, Manifest, Pin,
+    Ecosystem, EcosystemCtx, ResolveMode, EcosystemError, EcosystemKind, EvidenceKind, Finding, Manifest, Pin,
 };
 use pinner_mise::MiseEcosystem;
 use pinner_toolchain::{CommandOutput, CommandRunner, ToolchainError};
@@ -68,6 +68,7 @@ fn prefers_lock_pin_over_tool() {
         lock_pins: &[lock],
         offline: false,
         pin_exact_ranges: true,
+        resolve_mode: ResolveMode::Pin,
     };
 
     let pins = eco.resolve(&[finding], &ctx).unwrap();
@@ -99,6 +100,7 @@ fn resolve_map_used_before_mise() {
         lock_pins: &[],
         offline: false,
         pin_exact_ranges: true,
+        resolve_mode: ResolveMode::Pin,
     };
 
     // SAFETY: test-only env seam; serialized via env_lock.
@@ -141,6 +143,7 @@ fn offline_without_lock_or_map_errors() {
         lock_pins: &[],
         offline: true,
         pin_exact_ranges: true,
+        resolve_mode: ResolveMode::Pin,
     };
     let err = eco.resolve(&[finding], &ctx).unwrap_err();
     assert!(matches!(
@@ -178,6 +181,7 @@ fn resolves_via_mise_latest() {
         lock_pins: &[],
         offline: false,
         pin_exact_ranges: true,
+        resolve_mode: ResolveMode::Pin,
     };
     let pins = eco.resolve(&[finding], &ctx).unwrap();
     assert_eq!(pins[0].pinned, "22.11.0");

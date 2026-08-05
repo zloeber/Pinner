@@ -1,6 +1,6 @@
 use std::path::Path;
 
-use pinner_ecosystem::{Ecosystem, EcosystemCtx};
+use pinner_ecosystem::{Ecosystem, EcosystemCtx, ResolveMode};
 use pinner_terraform::TerraformEcosystem;
 
 #[test]
@@ -15,6 +15,7 @@ fn extracts_remote_modules_and_providers_skips_local() {
         lock_pins: &[],
         offline: true,
         pin_exact_ranges: true,
+        resolve_mode: ResolveMode::Pin,
     };
     let mut findings = Vec::new();
     for m in &manifests {

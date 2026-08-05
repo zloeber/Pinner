@@ -1,4 +1,4 @@
-use pinner_ecosystem::{Ecosystem, EcosystemCtx, EcosystemKind, EvidenceKind, Manifest};
+use pinner_ecosystem::{Ecosystem, EcosystemCtx, ResolveMode, EcosystemKind, EvidenceKind, Manifest};
 use pinner_ruby::RubyEcosystem;
 use std::fs;
 use std::path::PathBuf;
@@ -19,6 +19,7 @@ fn extracts_floating_gemfile_deps() {
         lock_pins: &[],
         offline: true,
         pin_exact_ranges: true,
+        resolve_mode: ResolveMode::Pin,
     };
     let findings = eco.extract(&manifests[0], &ctx).unwrap();
     assert!(findings.iter().any(|f| f.name == "rake" && f.is_floating));
@@ -34,6 +35,7 @@ fn resolves_from_gemfile_lock_and_rewrites_exact() {
         lock_pins: &[],
         offline: true,
         pin_exact_ranges: true,
+        resolve_mode: ResolveMode::Pin,
     };
     let manifests = eco.discover(&repo).unwrap();
     let findings: Vec<_> = eco
@@ -96,6 +98,7 @@ fn resolves_from_pinner_ruby_resolve_map() {
         lock_pins: &[],
         offline: true,
         pin_exact_ranges: true,
+        resolve_mode: ResolveMode::Pin,
     };
     let manifests = eco.discover(dir.path()).unwrap();
     let findings = eco.extract(&manifests[0], &ctx).unwrap();

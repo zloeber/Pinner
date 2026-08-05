@@ -1,4 +1,4 @@
-use pinner_ecosystem::{Ecosystem, EcosystemCtx, EcosystemKind, EvidenceKind, Finding};
+use pinner_ecosystem::{Ecosystem, EcosystemCtx, ResolveMode, EcosystemKind, EvidenceKind, Finding};
 use pinner_python::PythonEcosystem;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -16,6 +16,7 @@ fn extracts_unpinned_requirement() {
         lock_pins: &[],
         offline: true,
         pin_exact_ranges: true,
+        resolve_mode: ResolveMode::Pin,
     };
     let manifests = eco.discover(&fixture()).unwrap();
     let findings: Vec<_> = manifests
@@ -37,6 +38,7 @@ fn resolves_from_uv_lock_offline() {
         lock_pins: &[],
         offline: true,
         pin_exact_ranges: true,
+        resolve_mode: ResolveMode::Pin,
     };
     let manifests = eco.discover(&fixture()).unwrap();
     let req = manifests
@@ -63,6 +65,7 @@ fn resolves_from_poetry_lock_when_uv_lock_absent() {
         lock_pins: &[],
         offline: true,
         pin_exact_ranges: true,
+        resolve_mode: ResolveMode::Pin,
     };
     let finding = Finding {
         ecosystem: EcosystemKind::Python,
@@ -91,6 +94,7 @@ fn resolves_from_pdm_lock_when_uv_lock_absent() {
         lock_pins: &[],
         offline: true,
         pin_exact_ranges: true,
+        resolve_mode: ResolveMode::Pin,
     };
     let finding = Finding {
         ecosystem: EcosystemKind::Python,

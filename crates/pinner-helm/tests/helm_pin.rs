@@ -1,7 +1,7 @@
 use std::path::{Path, PathBuf};
 use std::sync::{Mutex, OnceLock};
 
-use pinner_ecosystem::{Ecosystem, EcosystemCtx};
+use pinner_ecosystem::{Ecosystem, EcosystemCtx, ResolveMode};
 use pinner_helm::HelmEcosystem;
 
 fn env_lock() -> &'static Mutex<()> {
@@ -19,6 +19,7 @@ fn ctx(repo: &Path) -> EcosystemCtx<'_> {
         lock_pins: &[],
         offline: true,
         pin_exact_ranges: true,
+        resolve_mode: ResolveMode::Pin,
     }
 }
 
