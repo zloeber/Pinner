@@ -2,7 +2,9 @@ use std::path::{Path, PathBuf};
 use std::sync::{Mutex, OnceLock};
 
 use pinner_actions::ActionsEcosystem;
-use pinner_ecosystem::{Ecosystem, EcosystemCtx};
+use pinner_ecosystem::{
+    Ecosystem, EcosystemCtx, EcosystemKind, EvidenceKind, Finding, Pin, ResolveMode,
+};
 
 fn env_lock() -> &'static Mutex<()> {
     static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
@@ -13,12 +15,17 @@ fn fixture_dir() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../tests/fixtures/actions-floating")
 }
 
+fn upgrade_fixture() -> PathBuf {
+    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../tests/fixtures/actions-upgrade")
+}
+
 fn ctx<'a>(repo: &'a Path) -> EcosystemCtx<'a> {
     EcosystemCtx {
         repo,
         lock_pins: &[],
         offline: true,
         pin_exact_ranges: true,
+        resolve_mode: ResolveMode::Pin,
     }
 }
 
@@ -79,6 +86,7 @@ fn pins_action_tag_to_sha_with_comment() {
         lock_pins: &[],
         offline: false,
         pin_exact_ranges: true,
+        resolve_mode: ResolveMode::Pin,
     };
     let manifests = eco.discover(&repo).unwrap();
     let findings = eco.extract(&manifests[0], &ctx).unwrap();
@@ -179,5 +187,137 @@ fn resolve_and_rewrite_images_and_reusable_workflow() {
     assert!(!rw.new_contents.contains("redis:latest"));
     assert!(
         !rw.new_contents.contains("reuse.yml@v1\n") && !rw.new_contents.ends_with("reuse.yml@v1")
+    );
+}
+
+#[test]
+fn upgrade_prefers_resolve_map_over_lock() {
+    let _guard = env_lock().lock().unwrap();
+    let old_sha = "11bd71901bbe5b1630ceea73d27597364c9af683";
+    let new_sha = "dddddddddddddddddddddddddddddddddddddddd";
+    // SAFETY: test-only resolve seam; serialized via env_lock.
+    unsafe {
+        std::env::set_var(
+            "PINNER_ACTIONS_RESOLVE_MAP",
+            format!("actions/checkout@{old_sha}={new_sha},{old_sha}={new_sha}"),
+        );
+        std::env::remove_var("PINNER_DOCKER_RESOLVE_MAP");
+    }
+    let eco = ActionsEcosystem;
+    let repo = upgrade_fixture();
+    let stale_lock = [Pin {
+        ecosystem: EcosystemKind::Actions,
+        name: "actions/checkout".into(),
+        requested: old_sha.into(),
+        pinned: old_sha.into(),
+        path: PathBuf::from(".github/workflows/ci.yml"),
+        evidence: EvidenceKind::Lock,
+        metadata: Default::default(),
+    }];
+    let ctx = EcosystemCtx {
+        repo: &repo,
+        lock_pins: &stale_lock,
+        offline: true,
+        pin_exact_ranges: true,
+        resolve_mode: ResolveMode::Upgrade,
+    };
+    let finding = Finding {
+        ecosystem: EcosystemKind::Actions,
+        name: "actions/checkout".into(),
+        requested: old_sha.into(),
+        path: PathBuf::from(".github/workflows/ci.yml"),
+        is_floating: false,
+    };
+    let pins = eco.resolve(&[finding], &ctx);
+    unsafe {
+        std::env::remove_var("PINNER_ACTIONS_RESOLVE_MAP");
+    }
+    let pins = pins.unwrap();
+    assert_eq!(pins.len(), 1);
+    assert_eq!(pins[0].pinned, new_sha);
+    assert_eq!(pins[0].metadata["previous"], old_sha);
+    assert_eq!(pins[0].metadata["upgrade"], true);
+    assert_eq!(pins[0].metadata["upgrade_channel"], "map");
+    assert_ne!(pins[0].evidence, EvidenceKind::Lock);
+}
+
+#[test]
+fn upgrade_omits_when_map_matches_previous() {
+    let _guard = env_lock().lock().unwrap();
+    let sha = "11bd71901bbe5b1630ceea73d27597364c9af683";
+    // SAFETY: test-only resolve seam; serialized via env_lock.
+    unsafe {
+        std::env::set_var(
+            "PINNER_ACTIONS_RESOLVE_MAP",
+            format!("actions/checkout@{sha}={sha},{sha}={sha}"),
+        );
+        std::env::remove_var("PINNER_DOCKER_RESOLVE_MAP");
+    }
+    let eco = ActionsEcosystem;
+    let repo = upgrade_fixture();
+    let ctx = EcosystemCtx {
+        repo: &repo,
+        lock_pins: &[],
+        offline: true,
+        pin_exact_ranges: true,
+        resolve_mode: ResolveMode::Upgrade,
+    };
+    let finding = Finding {
+        ecosystem: EcosystemKind::Actions,
+        name: "actions/checkout".into(),
+        requested: sha.into(),
+        path: PathBuf::from(".github/workflows/ci.yml"),
+        is_floating: false,
+    };
+    let pins = eco.resolve(&[finding], &ctx);
+    unsafe {
+        std::env::remove_var("PINNER_ACTIONS_RESOLVE_MAP");
+    }
+    let pins = pins.unwrap();
+    assert!(
+        pins.is_empty(),
+        "unchanged upgrade must be omitted, got {pins:?}"
+    );
+}
+
+#[test]
+fn upgrade_offline_without_map_ignores_lock() {
+    let _guard = env_lock().lock().unwrap();
+    // SAFETY: clear maps so resolve cannot succeed via seam.
+    unsafe {
+        std::env::remove_var("PINNER_ACTIONS_RESOLVE_MAP");
+        std::env::remove_var("PINNER_DOCKER_RESOLVE_MAP");
+    }
+    let eco = ActionsEcosystem;
+    let repo = upgrade_fixture();
+    let old_sha = "11bd71901bbe5b1630ceea73d27597364c9af683";
+    let stale_lock = [Pin {
+        ecosystem: EcosystemKind::Actions,
+        name: "actions/checkout".into(),
+        requested: old_sha.into(),
+        pinned: old_sha.into(),
+        path: PathBuf::from(".github/workflows/ci.yml"),
+        evidence: EvidenceKind::Lock,
+        metadata: Default::default(),
+    }];
+    let ctx = EcosystemCtx {
+        repo: &repo,
+        lock_pins: &stale_lock,
+        offline: true,
+        pin_exact_ranges: true,
+        resolve_mode: ResolveMode::Upgrade,
+    };
+    let finding = Finding {
+        ecosystem: EcosystemKind::Actions,
+        name: "actions/checkout".into(),
+        requested: old_sha.into(),
+        path: PathBuf::from(".github/workflows/ci.yml"),
+        is_floating: false,
+    };
+    let err = eco.resolve(&[finding], &ctx).unwrap_err();
+    let msg = err.to_string();
+    assert!(
+        msg.contains("offline") || msg.contains("PINNER_ACTIONS_RESOLVE_MAP"),
+        "upgrade must not freeze on lock; got {msg}"
     );
 }

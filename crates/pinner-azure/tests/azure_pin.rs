@@ -2,7 +2,9 @@ use std::path::{Path, PathBuf};
 use std::sync::{Mutex, OnceLock};
 
 use pinner_azure::AzureEcosystem;
-use pinner_ecosystem::{Ecosystem, EcosystemCtx};
+use pinner_ecosystem::{
+    Ecosystem, EcosystemCtx, EcosystemKind, EvidenceKind, Finding, Pin, ResolveMode,
+};
 
 fn env_lock() -> &'static Mutex<()> {
     static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
@@ -13,12 +15,17 @@ fn fixture_dir() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../tests/fixtures/azure-floating")
 }
 
+fn upgrade_fixture() -> PathBuf {
+    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../tests/fixtures/azure-upgrade")
+}
+
 fn ctx(repo: &Path) -> EcosystemCtx<'_> {
     EcosystemCtx {
         repo,
         lock_pins: &[],
         offline: true,
         pin_exact_ranges: true,
+        resolve_mode: ResolveMode::Pin,
     }
 }
 
@@ -260,5 +267,213 @@ fn job_level_container_string_image_extracted() {
             .iter()
             .any(|f| f.requested == "alpine:latest" && f.is_floating),
         "job container image missing: {findings:?}"
+    );
+}
+
+#[test]
+fn upgrade_prefers_resolve_map_over_lock() {
+    let _guard = env_lock().lock().unwrap();
+    let old_digest =
+        "node:20@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+    let new_digest = "node@sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc";
+    // SAFETY: test-only resolve seams; serialized via env_lock.
+    unsafe {
+        std::env::set_var(
+            "PINNER_DOCKER_RESOLVE_MAP",
+            format!("{old_digest}={new_digest},node:20={new_digest}"),
+        );
+        std::env::set_var(
+            "PINNER_AZURE_RESOLVE_MAP",
+            "UseNode@UseNode@1.2.3=UseNode@1.9.9",
+        );
+    }
+
+    let eco = AzureEcosystem;
+    let repo = upgrade_fixture();
+    let stale_lock = [
+        Pin {
+            ecosystem: EcosystemKind::Azure,
+            name: "node".into(),
+            requested: old_digest.into(),
+            pinned: old_digest.into(),
+            path: PathBuf::from("azure-pipelines.yml"),
+            evidence: EvidenceKind::Lock,
+            metadata: Default::default(),
+        },
+        Pin {
+            ecosystem: EcosystemKind::Azure,
+            name: "UseNode".into(),
+            requested: "UseNode@1.2.3".into(),
+            pinned: "UseNode@1.2.3".into(),
+            path: PathBuf::from("azure-pipelines.yml"),
+            evidence: EvidenceKind::Lock,
+            metadata: Default::default(),
+        },
+    ];
+    let ctx = EcosystemCtx {
+        repo: &repo,
+        lock_pins: &stale_lock,
+        offline: true,
+        pin_exact_ranges: true,
+        resolve_mode: ResolveMode::Upgrade,
+    };
+    let findings = [
+        Finding {
+            ecosystem: EcosystemKind::Azure,
+            name: "node".into(),
+            requested: old_digest.into(),
+            path: PathBuf::from("azure-pipelines.yml"),
+            is_floating: false,
+        },
+        Finding {
+            ecosystem: EcosystemKind::Azure,
+            name: "UseNode".into(),
+            requested: "UseNode@1.2.3".into(),
+            path: PathBuf::from("azure-pipelines.yml"),
+            is_floating: false,
+        },
+    ];
+    let pins = eco.resolve(&findings, &ctx);
+    unsafe {
+        std::env::remove_var("PINNER_DOCKER_RESOLVE_MAP");
+        std::env::remove_var("PINNER_AZURE_RESOLVE_MAP");
+    }
+    let pins = pins.unwrap();
+    assert_eq!(pins.len(), 2, "{pins:?}");
+    let image = pins.iter().find(|p| p.name == "node").unwrap();
+    assert_eq!(image.pinned, new_digest);
+    assert_eq!(image.metadata["previous"], old_digest);
+    assert_eq!(image.metadata["upgrade"], true);
+    assert_eq!(image.metadata["upgrade_channel"], "map");
+    assert_eq!(image.metadata["kind"], "image");
+    assert_ne!(image.evidence, EvidenceKind::Lock);
+
+    let task = pins.iter().find(|p| p.name == "UseNode").unwrap();
+    assert_eq!(task.pinned, "UseNode@1.9.9");
+    assert_eq!(task.metadata["previous"], "UseNode@1.2.3");
+    assert_eq!(task.metadata["kind"], "task");
+    assert_ne!(task.evidence, EvidenceKind::Lock);
+}
+
+#[test]
+fn upgrade_omits_when_map_matches_previous() {
+    let _guard = env_lock().lock().unwrap();
+    let digest = "node:20@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+    // SAFETY: test-only resolve seams; serialized via env_lock.
+    unsafe {
+        std::env::set_var(
+            "PINNER_DOCKER_RESOLVE_MAP",
+            format!("{digest}={digest},node:20={digest}"),
+        );
+        std::env::set_var(
+            "PINNER_AZURE_RESOLVE_MAP",
+            "UseNode@UseNode@1.2.3=UseNode@1.2.3",
+        );
+    }
+    let eco = AzureEcosystem;
+    let repo = upgrade_fixture();
+    let ctx = EcosystemCtx {
+        repo: &repo,
+        lock_pins: &[],
+        offline: true,
+        pin_exact_ranges: true,
+        resolve_mode: ResolveMode::Upgrade,
+    };
+    let findings = [
+        Finding {
+            ecosystem: EcosystemKind::Azure,
+            name: "node".into(),
+            requested: digest.into(),
+            path: PathBuf::from("azure-pipelines.yml"),
+            is_floating: false,
+        },
+        Finding {
+            ecosystem: EcosystemKind::Azure,
+            name: "UseNode".into(),
+            requested: "UseNode@1.2.3".into(),
+            path: PathBuf::from("azure-pipelines.yml"),
+            is_floating: false,
+        },
+    ];
+    let pins = eco.resolve(&findings, &ctx);
+    unsafe {
+        std::env::remove_var("PINNER_DOCKER_RESOLVE_MAP");
+        std::env::remove_var("PINNER_AZURE_RESOLVE_MAP");
+    }
+    let pins = pins.unwrap();
+    assert!(
+        pins.is_empty(),
+        "unchanged upgrade must be omitted, got {pins:?}"
+    );
+}
+
+#[test]
+fn upgrade_digest_only_without_tag_skips() {
+    let _guard = env_lock().lock().unwrap();
+    unsafe {
+        std::env::remove_var("PINNER_DOCKER_RESOLVE_MAP");
+        std::env::remove_var("PINNER_AZURE_RESOLVE_MAP");
+    }
+    let eco = AzureEcosystem;
+    let repo = upgrade_fixture();
+    let ctx = EcosystemCtx {
+        repo: &repo,
+        lock_pins: &[],
+        offline: true,
+        pin_exact_ranges: true,
+        resolve_mode: ResolveMode::Upgrade,
+    };
+    let finding = Finding {
+        ecosystem: EcosystemKind::Azure,
+        name: "node".into(),
+        requested: "node@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+            .into(),
+        path: PathBuf::from("azure-pipelines.yml"),
+        is_floating: false,
+    };
+    let pins = eco.resolve(&[finding], &ctx).unwrap();
+    assert!(
+        pins.is_empty(),
+        "digest-only without tag must skip, got {pins:?}"
+    );
+}
+
+#[test]
+fn upgrade_offline_without_map_ignores_lock() {
+    let _guard = env_lock().lock().unwrap();
+    unsafe {
+        std::env::remove_var("PINNER_DOCKER_RESOLVE_MAP");
+        std::env::remove_var("PINNER_AZURE_RESOLVE_MAP");
+    }
+    let eco = AzureEcosystem;
+    let repo = upgrade_fixture();
+    let stale_lock = [Pin {
+        ecosystem: EcosystemKind::Azure,
+        name: "UseNode".into(),
+        requested: "UseNode@1.2.3".into(),
+        pinned: "UseNode@1.2.3".into(),
+        path: PathBuf::from("azure-pipelines.yml"),
+        evidence: EvidenceKind::Lock,
+        metadata: Default::default(),
+    }];
+    let ctx = EcosystemCtx {
+        repo: &repo,
+        lock_pins: &stale_lock,
+        offline: true,
+        pin_exact_ranges: true,
+        resolve_mode: ResolveMode::Upgrade,
+    };
+    let finding = Finding {
+        ecosystem: EcosystemKind::Azure,
+        name: "UseNode".into(),
+        requested: "UseNode@1.2.3".into(),
+        path: PathBuf::from("azure-pipelines.yml"),
+        is_floating: false,
+    };
+    let err = eco.resolve(&[finding], &ctx).unwrap_err();
+    let msg = err.to_string();
+    assert!(
+        msg.contains("offline") || msg.contains("PINNER_AZURE_RESOLVE_MAP"),
+        "upgrade must not freeze on lock; got {msg}"
     );
 }

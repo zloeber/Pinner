@@ -10,3 +10,6 @@ crossterm = { workspace = true }
 pinner-core = { workspace = true }
 pinner-ecosystem = { workspace = true }
 ratatui = { workspace = true }
+
+[dev-dependencies]
+serde_json = { workspace = true }

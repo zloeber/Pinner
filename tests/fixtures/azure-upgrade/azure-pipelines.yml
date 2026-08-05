@@ -1,0 +1,8 @@
+pool:
+  vmImage: ubuntu-latest
+resources:
+  containers:
+    - container: build
+      image: node:20@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+steps:
+  - task: UseNode@1.2.3

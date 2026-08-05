@@ -1,7 +1,9 @@
 use std::path::{Path, PathBuf};
 use std::sync::{Mutex, OnceLock};
 
-use pinner_ecosystem::{Ecosystem, EcosystemCtx, EvidenceKind};
+use pinner_ecosystem::{
+    Ecosystem, EcosystemCtx, EcosystemKind, EvidenceKind, Finding, Pin, ResolveMode,
+};
 use pinner_terraform::TerraformEcosystem;
 
 fn env_lock() -> &'static Mutex<()> {
@@ -11,6 +13,10 @@ fn env_lock() -> &'static Mutex<()> {
 
 const GIT_SHA: &str = "11bd71901bbe5b1630ceea73d27597364c9af683";
 const GIT_SOURCE: &str = "git::https://example.com/org/mod.git?ref=main";
+
+fn upgrade_fixture() -> PathBuf {
+    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../tests/fixtures/terraform-upgrade")
+}
 
 #[test]
 fn resolve_and_rewrite_via_env_map() {
@@ -36,6 +42,7 @@ fn resolve_and_rewrite_via_env_map() {
         lock_pins: &[],
         offline: true,
         pin_exact_ranges: true,
+        resolve_mode: ResolveMode::Pin,
     };
 
     let manifests = eco.discover(tmp.path()).unwrap();
@@ -152,6 +159,7 @@ fn native_lock_wins_over_env_resolve_map() {
         lock_pins: &[],
         offline: true,
         pin_exact_ranges: true,
+        resolve_mode: ResolveMode::Pin,
     };
     let manifests = eco.discover(tmp.path()).unwrap();
     let findings: Vec<_> = manifests
@@ -177,4 +185,175 @@ fn native_lock_wins_over_env_resolve_map() {
     unsafe {
         std::env::remove_var("PINNER_TERRAFORM_RESOLVE_MAP");
     }
+}
+
+#[test]
+fn upgrade_prefers_resolve_map_over_native_lock() {
+    let _guard = env_lock().lock().unwrap();
+    // SAFETY: test-only resolve seam; serialized via env_lock.
+    unsafe {
+        std::env::set_var(
+            "PINNER_TERRAFORM_RESOLVE_MAP",
+            "hashicorp/aws@~> 5.0=5.200.0",
+        );
+    }
+
+    let tmp = tempfile::tempdir().unwrap();
+    std::fs::write(
+        tmp.path().join("providers.tf"),
+        r#"terraform {
+  required_providers {
+    aws = {
+      source  = "hashicorp/aws"
+      version = "~> 5.0"
+    }
+  }
+}
+"#,
+    )
+    .unwrap();
+    std::fs::write(
+        tmp.path().join(".terraform.lock.hcl"),
+        r#"provider "registry.terraform.io/hashicorp/aws" {
+  version     = "5.42.0"
+  constraints = "~> 5.0"
+  hashes = [
+    "h1:placeholder",
+  ]
+}
+"#,
+    )
+    .unwrap();
+
+    let eco = TerraformEcosystem;
+    let stale_lock = [Pin {
+        ecosystem: EcosystemKind::Terraform,
+        name: "hashicorp/aws".into(),
+        requested: "~> 5.0".into(),
+        pinned: "5.42.0".into(),
+        path: PathBuf::from("providers.tf"),
+        evidence: EvidenceKind::Lock,
+        metadata: Default::default(),
+    }];
+    let ctx = EcosystemCtx {
+        repo: tmp.path(),
+        lock_pins: &stale_lock,
+        offline: true,
+        pin_exact_ranges: true,
+        resolve_mode: ResolveMode::Upgrade,
+    };
+    let finding = Finding {
+        ecosystem: EcosystemKind::Terraform,
+        name: "hashicorp/aws".into(),
+        requested: "~> 5.0".into(),
+        path: PathBuf::from("providers.tf"),
+        is_floating: true,
+    };
+    let pins = eco.resolve(&[finding], &ctx);
+    unsafe {
+        std::env::remove_var("PINNER_TERRAFORM_RESOLVE_MAP");
+    }
+    let pins = pins.unwrap();
+    assert_eq!(pins.len(), 1);
+    assert_eq!(pins[0].pinned, "5.200.0");
+    assert_eq!(pins[0].metadata["previous"], "5.42.0");
+    assert_eq!(pins[0].metadata["upgrade"], true);
+    assert_eq!(pins[0].metadata["upgrade_channel"], "map");
+    assert_ne!(pins[0].evidence, EvidenceKind::Lock);
+    assert_ne!(pins[0].evidence, EvidenceKind::NativeLock);
+}
+
+#[test]
+fn upgrade_omits_when_map_matches_previous() {
+    let _guard = env_lock().lock().unwrap();
+    // SAFETY: test-only resolve seam; serialized via env_lock.
+    unsafe {
+        std::env::set_var(
+            "PINNER_TERRAFORM_RESOLVE_MAP",
+            "hashicorp/aws@5.100.0=5.100.0",
+        );
+    }
+    let eco = TerraformEcosystem;
+    let repo = upgrade_fixture();
+    let ctx = EcosystemCtx {
+        repo: &repo,
+        lock_pins: &[],
+        offline: true,
+        pin_exact_ranges: true,
+        resolve_mode: ResolveMode::Upgrade,
+    };
+    let finding = Finding {
+        ecosystem: EcosystemKind::Terraform,
+        name: "hashicorp/aws".into(),
+        requested: "5.100.0".into(),
+        path: PathBuf::from("providers.tf"),
+        is_floating: false,
+    };
+    let pins = eco.resolve(&[finding], &ctx);
+    unsafe {
+        std::env::remove_var("PINNER_TERRAFORM_RESOLVE_MAP");
+    }
+    let pins = pins.unwrap();
+    assert!(
+        pins.is_empty(),
+        "unchanged upgrade must be omitted, got {pins:?}"
+    );
+}
+
+#[test]
+fn upgrade_offline_without_map_ignores_native_lock() {
+    let _guard = env_lock().lock().unwrap();
+    // SAFETY: clear map so resolve cannot succeed via seam.
+    unsafe {
+        std::env::remove_var("PINNER_TERRAFORM_RESOLVE_MAP");
+    }
+
+    let tmp = tempfile::tempdir().unwrap();
+    std::fs::write(
+        tmp.path().join("providers.tf"),
+        r#"terraform {
+  required_providers {
+    aws = {
+      source  = "hashicorp/aws"
+      version = "~> 5.0"
+    }
+  }
+}
+"#,
+    )
+    .unwrap();
+    std::fs::write(
+        tmp.path().join(".terraform.lock.hcl"),
+        r#"provider "registry.terraform.io/hashicorp/aws" {
+  version     = "5.42.0"
+  constraints = "~> 5.0"
+  hashes = [
+    "h1:placeholder",
+  ]
+}
+"#,
+    )
+    .unwrap();
+
+    let eco = TerraformEcosystem;
+    let ctx = EcosystemCtx {
+        repo: tmp.path(),
+        lock_pins: &[],
+        offline: true,
+        pin_exact_ranges: true,
+        resolve_mode: ResolveMode::Upgrade,
+    };
+    let finding = Finding {
+        ecosystem: EcosystemKind::Terraform,
+        name: "hashicorp/aws".into(),
+        requested: "~> 5.0".into(),
+        path: PathBuf::from("providers.tf"),
+        is_floating: true,
+    };
+    let err = eco.resolve(&[finding], &ctx).unwrap_err();
+    let msg = err.to_string();
+    assert!(
+        msg.contains("offline") || msg.contains("PINNER_TERRAFORM_RESOLVE_MAP"),
+        "upgrade must not freeze on .terraform.lock.hcl; got {msg}"
+    );
 }

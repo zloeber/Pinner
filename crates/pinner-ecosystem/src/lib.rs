@@ -1,3 +1,5 @@
+mod upgrade;
+
 use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
@@ -84,12 +86,19 @@ pub struct Rewrite {
     pub new_contents: String,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum ResolveMode {
+    Pin,
+    Upgrade,
+}
+
 #[derive(Debug, Clone)]
 pub struct EcosystemCtx<'a> {
     pub repo: &'a Path,
     pub lock_pins: &'a [Pin],
     pub offline: bool,
     pub pin_exact_ranges: bool,
+    pub resolve_mode: ResolveMode,
 }
 
 /// Resolve a manifest/finding path for I/O: absolute paths are used as-is;
@@ -125,6 +134,8 @@ pub enum EcosystemError {
     Offline { name: String, requested: String },
 }
 
+pub use upgrade::upgrade_pin;
+
 pub trait Ecosystem: Send + Sync {
     fn kind(&self) -> EcosystemKind;
     fn discover(&self, repo: &Path) -> Result<Vec<Manifest>, EcosystemError>;
@@ -140,4 +151,14 @@ pub trait Ecosystem: Send + Sync {
     ) -> Result<Vec<Pin>, EcosystemError>;
     fn rewrite(&self, manifest: &Manifest, pins: &[Pin])
     -> Result<Option<Rewrite>, EcosystemError>;
+}
+
+#[cfg(test)]
+mod tests {
+    use super::ResolveMode;
+
+    #[test]
+    fn resolve_mode_defaults_are_distinct() {
+        assert_ne!(ResolveMode::Pin, ResolveMode::Upgrade);
+    }
 }

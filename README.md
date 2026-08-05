@@ -24,18 +24,27 @@ Download a multi-platform binary manually from [GitHub Releases](https://github.
 cargo install --locked --path crates/pinner
 ```
 
-Or, once published / mirrored via mise:
+Or via [mise](https://mise.jdx.dev) backends (availability depends on mise version and published package name):
 
 ```bash
-mise install pinner   # when a mise backend/plugin is available
-# or: cargo install pinner
+# GitHub release backend (prebuilt)
+mise use -g github:zloeber/Pinner
+
+# Cargo backend (build from crates.io / git as configured)
+mise use -g cargo:pinner
 ```
+
+Curl installer and `cargo install` remain first-class.
 
 ## Quick start
 
 ```bash
 # Resolve floating refs, rewrite sources, write pinner.lock.json
 pinner pin
+
+# Bump exact pins to latest (rewrite + lock)
+pinner upgrade
+pinner upgrade --walkthrough   # interactive accept/skip/edit (TTY)
 
 # Drift gate (no writes) — exit 1 on mismatch, 2 on tool/config errors
 pinner check
@@ -47,6 +56,28 @@ pinner audit --fix
 # Explain why a pin was chosen
 pinner explain <name-or-path>
 ```
+
+Agents and CI should use `--agent` / `--format json` — never `--walkthrough` in automation.
+
+## Provider support
+
+| Provider | Default | Preferred upgrade means | Also supported | Upgrade pin style | Notes |
+|----------|---------|-------------------------|----------------|-------------------|-------|
+| mise | on | `mise latest` / `mise ls-remote` | `PINNER_MISE_RESOLVE_MAP` | exact tool version | Nested mise configs included |
+| node | on | `npm view <pkg> version` | native lock ignored in upgrade; map | exact version in package.json | Workspaces supported |
+| python | on | **`uv pip compile`** / uv resolve | poetry/pdm locks ignored in upgrade; map | exact `==` | Prefer uv over pip/poetry CLI |
+| docker | on | `docker buildx imagetools inspect` | local inspect; map | `name@sha256:…` | Upgrades digest for image reference |
+| actions | on | `gh api` (latest release → SHA) | docker digests for workflow images; map | `@<sha>` + image digests | Reusable/composite uses included |
+| terraform | on | registry HTTP latest version | `git ls-remote`; `.terraform.lock.hcl` ignored in upgrade; map | exact version / full SHA | Local modules skipped |
+| helm | opt-in | HTTP index / OCI tags latest | docker digests for values images; map | exact chart ver / image digest | Requires `helm = true` |
+| k8s | opt-in | docker digests | map | image digest | Workload kinds only |
+| cargo | on | crates.io HTTP API | `cargo` CLI if used; map | exact semver in Cargo.toml | Path/git deps skipped |
+| go | on | `go list -m -u` | proxy.golang.org; map | exact module version | |
+| ruby | on | RubyGems HTTP | `gem` optional; map | exact gem version | |
+| gitlab | opt-in | docker digests + `git ls-remote` | map | digest / SHA | Opt-in in pinner.toml |
+| azure | opt-in | docker digests; task versions via map/HTTP | map | digest / exact task ver | Opt-in; tasks map-only until marketplace HTTP |
+
+Per-provider Pin / Upgrade / Check / Gaps: [docs/guide/ecosystems/](docs/guide/ecosystems/).
 
 ## Config (`pinner.toml`)
 
@@ -63,7 +94,7 @@ terraform = true   # default on
 helm = true        # opt-in (default off)
 k8s = true         # opt-in (default off)
 
-ignore = ["**/node_modules/**", "**/.git/**", "**/vendor/**"]
+ignore = ["**/node_modules/**", "**/.git/**", "**/vendor/**", "**/tests/fixtures/**"]
 
 [toolchain]
 install = true

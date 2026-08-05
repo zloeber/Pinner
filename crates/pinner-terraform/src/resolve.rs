@@ -5,7 +5,8 @@ use std::str::FromStr;
 
 use hcl_edit::structure::Body;
 use pinner_ecosystem::{
-    EcosystemCtx, EcosystemError, EcosystemKind, EvidenceKind, Finding, Pin, absolute_in_repo,
+    EcosystemCtx, EcosystemError, EcosystemKind, EvidenceKind, Finding, Pin, ResolveMode,
+    absolute_in_repo, upgrade_pin,
 };
 use pinner_iac_common::{
     http_get, parse_resolve_map, resolve_git_sha, resolve_map_lookup, select_matching_version,
@@ -14,7 +15,7 @@ use pinner_toolchain::{CommandRunner, RealCommandRunner};
 use serde_json::Value;
 
 use crate::TerraformEcosystem;
-use crate::git_source::{git_pinned_source, is_git_or_http_requested};
+use crate::git_source::{git_pinned_source, git_ref_from_source, is_git_or_http_requested};
 
 impl TerraformEcosystem {
     pub(crate) fn resolve_findings(
@@ -28,7 +29,9 @@ impl TerraformEcosystem {
         let mut pins = Vec::with_capacity(findings.len());
         for finding in findings {
             let module_source = sources.take(finding);
-            pins.push(resolve_one(&runner, finding, ctx, &map, module_source)?);
+            if let Some(pin) = resolve_one(&runner, finding, ctx, &map, module_source)? {
+                pins.push(pin);
+            }
         }
         Ok(pins)
     }
@@ -40,13 +43,17 @@ fn resolve_one(
     ctx: &EcosystemCtx<'_>,
     map: &HashMap<String, String>,
     module_source: String,
-) -> Result<Pin, EcosystemError> {
+) -> Result<Option<Pin>, EcosystemError> {
+    if ctx.resolve_mode == ResolveMode::Upgrade {
+        return resolve_upgrade(runner, finding, ctx, map, module_source);
+    }
+
     if let Some(lock) = ctx.lock_pins.iter().find(|pin| {
         pin.ecosystem == EcosystemKind::Terraform
             && pin.name == finding.name
             && pin.requested == finding.requested
     }) {
-        return Ok(Pin {
+        return Ok(Some(Pin {
             ecosystem: EcosystemKind::Terraform,
             name: finding.name.clone(),
             requested: finding.requested.clone(),
@@ -54,18 +61,22 @@ fn resolve_one(
             path: finding.path.clone(),
             evidence: EvidenceKind::Lock,
             metadata: lock.metadata.clone(),
-        });
+        }));
     }
 
     // Native provider lock before env map so `.terraform.lock.hcl` wins when both exist.
     if is_provider_finding(finding)
         && let Some(pinned) = resolve_from_terraform_lock(ctx.repo, finding)
     {
-        return Ok(registry_pin(finding, pinned, EvidenceKind::NativeLock));
+        return Ok(Some(registry_pin(
+            finding,
+            pinned,
+            EvidenceKind::NativeLock,
+        )));
     }
 
     if let Some(pinned) = resolve_map_lookup(map, &finding.name, &finding.requested) {
-        return Ok(registry_pin(finding, pinned, EvidenceKind::Registry));
+        return Ok(Some(registry_pin(finding, pinned, EvidenceKind::Registry)));
     }
 
     if ctx.offline {
@@ -89,7 +100,7 @@ fn resolve_one(
                 hint,
             }
         })?;
-        return Ok(registry_pin(finding, pinned, EvidenceKind::Tool));
+        return Ok(Some(registry_pin(finding, pinned, EvidenceKind::Tool)));
     }
 
     let pinned = if is_provider_finding(finding) {
@@ -110,7 +121,179 @@ fn resolve_one(
         hint,
     })?;
 
-    Ok(registry_pin(finding, pinned, EvidenceKind::Registry))
+    Ok(Some(registry_pin(finding, pinned, EvidenceKind::Registry)))
+}
+
+fn resolve_upgrade(
+    runner: &dyn CommandRunner,
+    finding: &Finding,
+    ctx: &EcosystemCtx<'_>,
+    map: &HashMap<String, String>,
+    module_source: String,
+) -> Result<Option<Pin>, EcosystemError> {
+    let previous = previous_for_upgrade(finding, ctx);
+
+    if let Some(mapped) = resolve_map_lookup(map, &finding.name, &finding.requested) {
+        let newest = normalize_upgrade_pinned(finding, mapped);
+        return Ok(upgrade_pin(
+            finding,
+            &previous,
+            &newest,
+            EvidenceKind::Registry,
+            "map",
+        ));
+    }
+
+    if ctx.offline {
+        return Err(EcosystemError::Offline {
+            name: finding.name.clone(),
+            requested: finding.requested.clone(),
+        });
+    }
+
+    let newest = if is_git_or_http_requested(&finding.requested) {
+        let repo_url =
+            parse_git_repo_url(&finding.requested).ok_or_else(|| EcosystemError::Resolve {
+                name: finding.name.clone(),
+                requested: finding.requested.clone(),
+                hint: "could not parse git module source for upgrade".into(),
+            })?;
+        let sha =
+            resolve_git_sha(runner, &repo_url, "HEAD").map_err(|hint| EcosystemError::Resolve {
+                name: finding.name.clone(),
+                requested: finding.requested.clone(),
+                hint,
+            })?;
+        git_pinned_source(&finding.requested, &sha)
+    } else if is_provider_finding(finding) {
+        resolve_terraform_registry_provider(&finding.name, "*", &|url| http_get(runner, url))
+            .map_err(|hint| EcosystemError::Resolve {
+                name: finding.name.clone(),
+                requested: finding.requested.clone(),
+                hint,
+            })?
+    } else {
+        let source = if module_source.is_empty() {
+            finding.name.clone()
+        } else {
+            module_source
+        };
+        resolve_terraform_registry_module(&source, "*", &|url| http_get(runner, url)).map_err(
+            |hint| EcosystemError::Resolve {
+                name: finding.name.clone(),
+                requested: finding.requested.clone(),
+                hint,
+            },
+        )?
+    };
+
+    let evidence = if is_git_or_http_requested(&finding.requested) {
+        EvidenceKind::Tool
+    } else {
+        EvidenceKind::Registry
+    };
+    let channel = if is_git_or_http_requested(&finding.requested) {
+        "git"
+    } else {
+        "registry"
+    };
+
+    Ok(upgrade_pin(finding, &previous, &newest, evidence, channel))
+}
+
+fn normalize_upgrade_pinned(finding: &Finding, pinned: String) -> String {
+    if is_git_or_http_requested(&finding.requested) {
+        // Map may store bare SHA or a full source URL with ref=.
+        let sha = git_ref_from_source(&pinned).unwrap_or(pinned.as_str());
+        return git_pinned_source(&finding.requested, sha);
+    }
+    pinned
+}
+
+fn previous_for_upgrade(finding: &Finding, ctx: &EcosystemCtx<'_>) -> String {
+    if is_git_or_http_requested(&finding.requested) {
+        if let Some(ref_) = git_ref_from_source(&finding.requested)
+            && is_full_git_sha(ref_)
+        {
+            return git_pinned_source(&finding.requested, ref_);
+        }
+        if let Some(lock) = ctx.lock_pins.iter().find(|pin| {
+            pin.ecosystem == EcosystemKind::Terraform
+                && pin.name == finding.name
+                && pin.requested == finding.requested
+        }) {
+            return lock.pinned.clone();
+        }
+        return finding.requested.clone();
+    }
+
+    if is_exact_version_constraint(&finding.requested) {
+        return finding.requested.clone();
+    }
+
+    // Display-only peeks — never choose native/lock as the upgrade pin.
+    if is_provider_finding(finding)
+        && let Some(pinned) = resolve_from_terraform_lock(ctx.repo, finding)
+    {
+        return pinned;
+    }
+    if let Some(lock) = ctx.lock_pins.iter().find(|pin| {
+        pin.ecosystem == EcosystemKind::Terraform
+            && pin.name == finding.name
+            && pin.requested == finding.requested
+    }) {
+        return lock.pinned.clone();
+    }
+    finding.requested.clone()
+}
+
+fn is_full_git_sha(ref_: &str) -> bool {
+    let ref_ = ref_.trim();
+    ref_.len() == 40 && ref_.chars().all(|c| c.is_ascii_hexdigit())
+}
+
+fn is_exact_version_constraint(version: &str) -> bool {
+    let version = version.trim();
+    if version.is_empty() {
+        return false;
+    }
+    let version = version.strip_prefix('=').map(str::trim).unwrap_or(version);
+    is_exact_semver(version)
+}
+
+fn is_exact_semver(version: &str) -> bool {
+    let version = version.trim();
+    if version.is_empty() {
+        return false;
+    }
+    let bytes = version.as_bytes();
+    let mut i = 0;
+    if !consume_digits(bytes, &mut i) {
+        return false;
+    }
+    if i >= bytes.len() || bytes[i] != b'.' {
+        return false;
+    }
+    i += 1;
+    if !consume_digits(bytes, &mut i) {
+        return false;
+    }
+    if i >= bytes.len() || bytes[i] != b'.' {
+        return false;
+    }
+    i += 1;
+    if !consume_digits(bytes, &mut i) {
+        return false;
+    }
+    i == bytes.len()
+}
+
+fn consume_digits(bytes: &[u8], i: &mut usize) -> bool {
+    let start = *i;
+    while *i < bytes.len() && bytes[*i].is_ascii_digit() {
+        *i += 1;
+    }
+    *i > start
 }
 
 fn registry_pin(finding: &Finding, pinned: String, evidence: EvidenceKind) -> Pin {
@@ -143,9 +326,7 @@ fn is_provider_finding(finding: &Finding) -> bool {
 }
 
 fn parse_git_source(source: &str) -> Option<(String, String)> {
-    let source = source.trim();
-    let without_git = source.strip_prefix("git::").unwrap_or(source);
-    let (url_part, query) = without_git.split_once('?')?;
+    let (repo_url, query) = parse_git_url_parts(source)?;
     let mut ref_name = None;
     for part in query.split('&') {
         if let Some(value) = part.strip_prefix("ref=") {
@@ -154,15 +335,42 @@ fn parse_git_source(source: &str) -> Option<(String, String)> {
         }
     }
     let ref_name = ref_name?;
-    let repo_url = if url_part.starts_with("github.com/")
+    Some((repo_url, ref_name))
+}
+
+/// Repo URL for upgrade HEAD resolve (ref query optional).
+fn parse_git_repo_url(source: &str) -> Option<String> {
+    if let Some((url, _)) = parse_git_url_parts(source) {
+        return Some(url);
+    }
+    let source = source.trim();
+    let without_git = source.strip_prefix("git::").unwrap_or(source);
+    let url_part = without_git
+        .split_once('?')
+        .map(|(u, _)| u)
+        .unwrap_or(without_git);
+    if url_part.is_empty() {
+        return None;
+    }
+    Some(normalize_git_url(url_part))
+}
+
+fn parse_git_url_parts(source: &str) -> Option<(String, &str)> {
+    let source = source.trim();
+    let without_git = source.strip_prefix("git::").unwrap_or(source);
+    let (url_part, query) = without_git.split_once('?')?;
+    Some((normalize_git_url(url_part), query))
+}
+
+fn normalize_git_url(url_part: &str) -> String {
+    if url_part.starts_with("github.com/")
         || url_part.starts_with("gitlab.com/")
         || url_part.starts_with("bitbucket.org/")
     {
         format!("https://{url_part}")
     } else {
         url_part.to_string()
-    };
-    Some((repo_url, ref_name))
+    }
 }
 
 fn resolve_from_terraform_lock(repo: &Path, finding: &Finding) -> Option<String> {
@@ -438,5 +646,13 @@ mod tests {
             resolve_terraform_registry_module("ns/name/prov", "~> 5.0", &|_| Ok(body.to_string()))
                 .unwrap();
         assert_eq!(v, "5.2.0");
+    }
+
+    #[test]
+    fn resolve_module_latest_unconstrained() {
+        let body = r#"{"modules":[{"versions":[{"version":"5.2.0"},{"version":"6.0.0"}]}]}"#;
+        let v = resolve_terraform_registry_module("ns/name/prov", "*", &|_| Ok(body.to_string()))
+            .unwrap();
+        assert_eq!(v, "6.0.0");
     }
 }

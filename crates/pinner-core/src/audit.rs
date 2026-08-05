@@ -1,7 +1,7 @@
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-use pinner_ecosystem::{Ecosystem, EcosystemCtx, EvidenceKind, Pin};
+use pinner_ecosystem::{Ecosystem, EcosystemCtx, EvidenceKind, Pin, ResolveMode};
 use serde::Serialize;
 
 use crate::error::CoreError;
@@ -39,6 +39,7 @@ pub fn audit(
         lock_pins: &lock_pins,
         offline: opts.offline,
         pin_exact_ranges: policy.pin_exact_ranges,
+        resolve_mode: ResolveMode::Pin,
     };
 
     let mut report = RunReport::default();
@@ -103,6 +104,7 @@ fn explain_via_resolve(
         lock_pins: &lock_pins,
         offline: opts.offline,
         pin_exact_ranges: policy.pin_exact_ranges,
+        resolve_mode: ResolveMode::Pin,
     };
 
     for ecosystem in selected_ecosystems(ecosystems, policy, opts) {

@@ -3,7 +3,8 @@ use std::env;
 use std::path::{Path, PathBuf};
 
 use pinner_ecosystem::{
-    EcosystemCtx, EcosystemError, EcosystemKind, EvidenceKind, Finding, Pin, absolute_in_repo,
+    EcosystemCtx, EcosystemError, EcosystemKind, EvidenceKind, Finding, Pin, ResolveMode,
+    absolute_in_repo, upgrade_pin,
 };
 use pinner_iac_common::{
     http_get, parse_resolve_map, resolve_image_digest, resolve_map_lookup, select_matching_version,
@@ -28,10 +29,14 @@ impl HelmEcosystem {
         let mut pins = Vec::with_capacity(findings.len());
         for finding in findings {
             if is_values_file(&finding.path) {
-                pins.push(resolve_image_one(&runner, finding, ctx, &map)?);
+                if let Some(pin) = resolve_image_one(&runner, finding, ctx, &map)? {
+                    pins.push(pin);
+                }
             } else {
                 let repository = repos.take(finding);
-                pins.push(resolve_chart_one(&runner, finding, ctx, &map, repository)?);
+                if let Some(pin) = resolve_chart_one(&runner, finding, ctx, &map, repository)? {
+                    pins.push(pin);
+                }
             }
         }
         Ok(pins)
@@ -43,13 +48,17 @@ fn resolve_image_one(
     finding: &Finding,
     ctx: &EcosystemCtx<'_>,
     map: &HashMap<String, String>,
-) -> Result<Pin, EcosystemError> {
+) -> Result<Option<Pin>, EcosystemError> {
+    if ctx.resolve_mode == ResolveMode::Upgrade {
+        return resolve_image_upgrade(runner, finding, ctx, map);
+    }
+
     if let Some(lock) = ctx.lock_pins.iter().find(|pin| {
         pin.ecosystem == EcosystemKind::Helm
             && pin.name == finding.name
             && pin.requested == finding.requested
     }) {
-        return Ok(Pin {
+        return Ok(Some(Pin {
             ecosystem: EcosystemKind::Helm,
             name: finding.name.clone(),
             requested: finding.requested.clone(),
@@ -57,11 +66,11 @@ fn resolve_image_one(
             path: finding.path.clone(),
             evidence: EvidenceKind::Lock,
             metadata: lock.metadata.clone(),
-        });
+        }));
     }
 
     if let Some(pinned) = resolve_map_lookup(map, &finding.name, &finding.requested) {
-        return Ok(image_pin(finding, pinned, EvidenceKind::Registry));
+        return Ok(Some(image_pin(finding, pinned, EvidenceKind::Registry)));
     }
 
     if ctx.offline {
@@ -78,7 +87,43 @@ fn resolve_image_one(
             hint,
         }
     })?;
-    Ok(image_pin(finding, pinned, EvidenceKind::Tool))
+    Ok(Some(image_pin(finding, pinned, EvidenceKind::Tool)))
+}
+
+fn resolve_image_upgrade(
+    runner: &dyn CommandRunner,
+    finding: &Finding,
+    ctx: &EcosystemCtx<'_>,
+    map: &HashMap<String, String>,
+) -> Result<Option<Pin>, EcosystemError> {
+    let Some(inspect_ref) = upgrade_image_ref(&finding.requested) else {
+        return Ok(None);
+    };
+
+    let previous = previous_for_image_upgrade(finding, ctx);
+
+    if let Some(newest) = resolve_map_lookup(map, &finding.name, &finding.requested)
+        .or_else(|| map.get(&finding.requested).cloned())
+        .or_else(|| map.get(&inspect_ref).cloned())
+    {
+        return Ok(upgrade_image_pin(finding, &previous, &newest, "map"));
+    }
+
+    if ctx.offline {
+        return Err(EcosystemError::Offline {
+            name: finding.name.clone(),
+            requested: finding.requested.clone(),
+        });
+    }
+
+    let newest =
+        resolve_image_digest(runner, &inspect_ref).map_err(|hint| EcosystemError::Resolve {
+            name: finding.name.clone(),
+            requested: finding.requested.clone(),
+            hint,
+        })?;
+
+    Ok(upgrade_image_pin(finding, &previous, &newest, "docker"))
 }
 
 fn resolve_chart_one(
@@ -87,14 +132,18 @@ fn resolve_chart_one(
     ctx: &EcosystemCtx<'_>,
     map: &HashMap<String, String>,
     repository: String,
-) -> Result<Pin, EcosystemError> {
+) -> Result<Option<Pin>, EcosystemError> {
+    if ctx.resolve_mode == ResolveMode::Upgrade {
+        return resolve_chart_upgrade(runner, finding, ctx, map, repository);
+    }
+
     if let Some(lock) = ctx.lock_pins.iter().find(|pin| {
         pin.ecosystem == EcosystemKind::Helm
             && pin.name == finding.name
             && pin.requested == finding.requested
             && repository_matches(pin, &repository)
     }) {
-        return Ok(Pin {
+        return Ok(Some(Pin {
             ecosystem: EcosystemKind::Helm,
             name: finding.name.clone(),
             requested: finding.requested.clone(),
@@ -102,16 +151,16 @@ fn resolve_chart_one(
             path: finding.path.clone(),
             evidence: EvidenceKind::Lock,
             metadata: lock.metadata.clone(),
-        });
+        }));
     }
 
     if let Some(pinned) = resolve_map_lookup(map, &finding.name, &finding.requested) {
-        return Ok(helm_pin(
+        return Ok(Some(helm_pin(
             finding,
             pinned,
             EvidenceKind::Registry,
             repository,
-        ));
+        )));
     }
 
     if ctx.offline {
@@ -127,12 +176,177 @@ fn resolve_chart_one(
             requested: finding.requested.clone(),
             hint,
         })?;
-    Ok(helm_pin(
+    Ok(Some(helm_pin(
         finding,
         pinned,
         EvidenceKind::Registry,
         repository,
+    )))
+}
+
+fn resolve_chart_upgrade(
+    runner: &dyn CommandRunner,
+    finding: &Finding,
+    ctx: &EcosystemCtx<'_>,
+    map: &HashMap<String, String>,
+    repository: String,
+) -> Result<Option<Pin>, EcosystemError> {
+    let previous = previous_for_chart_upgrade(finding, ctx, &repository);
+
+    if let Some(newest) = resolve_map_lookup(map, &finding.name, &finding.requested) {
+        return Ok(upgrade_chart_pin(
+            finding,
+            &previous,
+            &newest,
+            &repository,
+            "map",
+        ));
+    }
+
+    if ctx.offline {
+        return Err(EcosystemError::Offline {
+            name: finding.name.clone(),
+            requested: finding.requested.clone(),
+        });
+    }
+
+    let newest =
+        resolve_helm_chart_version(runner, &finding.name, "*", &repository).map_err(|hint| {
+            EcosystemError::Resolve {
+                name: finding.name.clone(),
+                requested: finding.requested.clone(),
+                hint,
+            }
+        })?;
+
+    Ok(upgrade_chart_pin(
+        finding,
+        &previous,
+        &newest,
+        &repository,
+        "registry",
     ))
+}
+
+fn upgrade_chart_pin(
+    finding: &Finding,
+    previous: &str,
+    newest: &str,
+    repository: &str,
+    channel: &str,
+) -> Option<Pin> {
+    let mut pin = upgrade_pin(finding, previous, newest, EvidenceKind::Registry, channel)?;
+    pin.metadata
+        .insert("chart".into(), Value::String(finding.name.clone()));
+    pin.metadata
+        .insert("repository".into(), Value::String(repository.to_string()));
+    Some(pin)
+}
+
+fn upgrade_image_pin(
+    finding: &Finding,
+    previous: &str,
+    newest: &str,
+    channel: &str,
+) -> Option<Pin> {
+    let evidence = if channel == "docker" {
+        EvidenceKind::Tool
+    } else {
+        EvidenceKind::Registry
+    };
+    let mut pin = upgrade_pin(finding, previous, newest, evidence, channel)?;
+    pin.metadata
+        .insert("kind".into(), Value::String("image".into()));
+    Some(pin)
+}
+
+fn previous_for_chart_upgrade(
+    finding: &Finding,
+    ctx: &EcosystemCtx<'_>,
+    repository: &str,
+) -> String {
+    if is_exact_chart_version(&finding.requested) {
+        return finding.requested.clone();
+    }
+    if let Some(lock) = ctx.lock_pins.iter().find(|pin| {
+        pin.ecosystem == EcosystemKind::Helm
+            && pin.name == finding.name
+            && pin.requested == finding.requested
+            && repository_matches(pin, repository)
+    }) {
+        return lock.pinned.clone();
+    }
+    finding.requested.clone()
+}
+
+fn previous_for_image_upgrade(finding: &Finding, ctx: &EcosystemCtx<'_>) -> String {
+    if finding.requested.contains("@sha256:") {
+        return finding.requested.clone();
+    }
+    if let Some(lock) = ctx.lock_pins.iter().find(|pin| {
+        pin.ecosystem == EcosystemKind::Helm
+            && pin.name == finding.name
+            && pin.requested == finding.requested
+    }) {
+        return lock.pinned.clone();
+    }
+    finding.requested.clone()
+}
+
+fn is_exact_chart_version(version: &str) -> bool {
+    let version = version.trim();
+    if version.is_empty() || version == "*" || version.eq_ignore_ascii_case("latest") {
+        return false;
+    }
+    let version = version.strip_prefix('=').map(str::trim).unwrap_or(version);
+    let bytes = version.as_bytes();
+    let mut i = 0;
+    if !consume_digits(bytes, &mut i) {
+        return false;
+    }
+    if i >= bytes.len() || bytes[i] != b'.' {
+        return false;
+    }
+    i += 1;
+    if !consume_digits(bytes, &mut i) {
+        return false;
+    }
+    if i >= bytes.len() || bytes[i] != b'.' {
+        return false;
+    }
+    i += 1;
+    if !consume_digits(bytes, &mut i) {
+        return false;
+    }
+    i == bytes.len()
+}
+
+fn consume_digits(bytes: &[u8], i: &mut usize) -> bool {
+    let start = *i;
+    while *i < bytes.len() && bytes[*i].is_ascii_digit() {
+        *i += 1;
+    }
+    *i > start
+}
+
+/// Tag/name form to re-resolve. Digest-only (`name@sha256:…` without `:tag`) → None.
+fn upgrade_image_ref(requested: &str) -> Option<String> {
+    let requested = requested.trim();
+    if requested.is_empty() {
+        return None;
+    }
+    if let Some((left, _digest)) = requested.split_once("@sha256:") {
+        if image_has_tag(left) {
+            return Some(left.to_string());
+        }
+        return None;
+    }
+    Some(requested.to_string())
+}
+
+fn image_has_tag(image: &str) -> bool {
+    let after_slash = image.rfind('/').map(|i| i + 1).unwrap_or(0);
+    image[after_slash..].contains(':')
 }
 
 fn image_pin(finding: &Finding, pinned: String, evidence: EvidenceKind) -> Pin {
@@ -436,7 +650,10 @@ fn gitops_row(value: &YamlValue) -> Option<(String, String, String)> {
 
 #[cfg(test)]
 mod tests {
-    use super::{parse_helm_index_versions, parse_oci_tags, resolve_helm_chart_version_with};
+    use super::{
+        parse_helm_index_versions, parse_oci_tags, resolve_helm_chart_version_with,
+        upgrade_image_ref,
+    };
 
     #[test]
     fn parses_helm_index_versions() {
@@ -490,5 +707,19 @@ entries:
     fn parses_oci_tags() {
         let tags = parse_oci_tags(r#"{"tags":["1.0.0","2.0.0"]}"#).unwrap();
         assert_eq!(tags, vec!["1.0.0", "2.0.0"]);
+    }
+
+    #[test]
+    fn upgrade_image_ref_skips_digest_only() {
+        assert_eq!(
+            upgrade_image_ref(
+                "nginx@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+            ),
+            None
+        );
+        assert_eq!(
+            upgrade_image_ref("nginx:latest").as_deref(),
+            Some("nginx:latest")
+        );
     }
 }

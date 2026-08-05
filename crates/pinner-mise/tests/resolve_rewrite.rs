@@ -3,7 +3,12 @@ use std::sync::{Arc, Mutex, OnceLock};
 
 use pinner_ecosystem::{
     Ecosystem, EcosystemCtx, EcosystemError, EcosystemKind, EvidenceKind, Finding, Manifest, Pin,
+    ResolveMode,
 };
+
+fn upgrade_fixture() -> PathBuf {
+    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../tests/fixtures/mise-upgrade")
+}
 use pinner_mise::MiseEcosystem;
 use pinner_toolchain::{CommandOutput, CommandRunner, ToolchainError};
 use tempfile::tempdir;
@@ -68,6 +73,7 @@ fn prefers_lock_pin_over_tool() {
         lock_pins: &[lock],
         offline: false,
         pin_exact_ranges: true,
+        resolve_mode: ResolveMode::Pin,
     };
 
     let pins = eco.resolve(&[finding], &ctx).unwrap();
@@ -99,6 +105,7 @@ fn resolve_map_used_before_mise() {
         lock_pins: &[],
         offline: false,
         pin_exact_ranges: true,
+        resolve_mode: ResolveMode::Pin,
     };
 
     // SAFETY: test-only env seam; serialized via env_lock.
@@ -141,6 +148,7 @@ fn offline_without_lock_or_map_errors() {
         lock_pins: &[],
         offline: true,
         pin_exact_ranges: true,
+        resolve_mode: ResolveMode::Pin,
     };
     let err = eco.resolve(&[finding], &ctx).unwrap_err();
     assert!(matches!(
@@ -178,6 +186,7 @@ fn resolves_via_mise_latest() {
         lock_pins: &[],
         offline: false,
         pin_exact_ranges: true,
+        resolve_mode: ResolveMode::Pin,
     };
     let pins = eco.resolve(&[finding], &ctx).unwrap();
     assert_eq!(pins[0].pinned, "22.11.0");
@@ -188,6 +197,125 @@ fn resolves_via_mise_latest() {
             .unwrap()
             .iter()
             .any(|c| c == "mise latest node")
+    );
+}
+
+#[test]
+fn upgrade_prefers_resolve_map_over_lock() {
+    let _guard = env_lock().lock().unwrap();
+    // SAFETY: test-only resolve seam; serialized via env_lock.
+    unsafe {
+        std::env::set_var("PINNER_MISE_RESOLVE_MAP", "node=22.12.0");
+    }
+    let eco = MiseEcosystem::default();
+    let repo = upgrade_fixture();
+    let stale_lock = [Pin {
+        ecosystem: EcosystemKind::Mise,
+        name: "node".into(),
+        requested: "22.11.0".into(),
+        pinned: "22.11.0".into(),
+        path: PathBuf::from(".mise.toml"),
+        evidence: EvidenceKind::Lock,
+        metadata: Default::default(),
+    }];
+    let ctx = EcosystemCtx {
+        repo: &repo,
+        lock_pins: &stale_lock,
+        offline: true,
+        pin_exact_ranges: true,
+        resolve_mode: ResolveMode::Upgrade,
+    };
+    let finding = Finding {
+        ecosystem: EcosystemKind::Mise,
+        name: "node".into(),
+        requested: "22.11.0".into(),
+        path: PathBuf::from(".mise.toml"),
+        is_floating: false,
+    };
+    let pins = eco.resolve(&[finding], &ctx);
+    unsafe {
+        std::env::remove_var("PINNER_MISE_RESOLVE_MAP");
+    }
+    let pins = pins.unwrap();
+    assert_eq!(pins.len(), 1);
+    assert_eq!(pins[0].pinned, "22.12.0");
+    assert_eq!(pins[0].metadata["previous"], "22.11.0");
+    assert_eq!(pins[0].metadata["upgrade"], true);
+    assert_eq!(pins[0].metadata["upgrade_channel"], "map");
+    assert_ne!(pins[0].evidence, EvidenceKind::Lock);
+}
+
+#[test]
+fn upgrade_omits_when_map_matches_previous() {
+    let _guard = env_lock().lock().unwrap();
+    // SAFETY: test-only resolve seam; serialized via env_lock.
+    unsafe {
+        std::env::set_var("PINNER_MISE_RESOLVE_MAP", "node=22.11.0");
+    }
+    let eco = MiseEcosystem::default();
+    let repo = upgrade_fixture();
+    let ctx = EcosystemCtx {
+        repo: &repo,
+        lock_pins: &[],
+        offline: true,
+        pin_exact_ranges: true,
+        resolve_mode: ResolveMode::Upgrade,
+    };
+    let finding = Finding {
+        ecosystem: EcosystemKind::Mise,
+        name: "node".into(),
+        requested: "22.11.0".into(),
+        path: PathBuf::from(".mise.toml"),
+        is_floating: false,
+    };
+    let pins = eco.resolve(&[finding], &ctx);
+    unsafe {
+        std::env::remove_var("PINNER_MISE_RESOLVE_MAP");
+    }
+    let pins = pins.unwrap();
+    assert!(
+        pins.is_empty(),
+        "unchanged upgrade must be omitted, got {pins:?}"
+    );
+}
+
+#[test]
+fn upgrade_offline_without_map_ignores_lock() {
+    let _guard = env_lock().lock().unwrap();
+    // SAFETY: clear map so resolve cannot succeed via seam.
+    unsafe {
+        std::env::remove_var("PINNER_MISE_RESOLVE_MAP");
+    }
+    let eco = MiseEcosystem::default();
+    let repo = upgrade_fixture();
+    let stale_lock = [Pin {
+        ecosystem: EcosystemKind::Mise,
+        name: "node".into(),
+        requested: "22.11.0".into(),
+        pinned: "22.11.0".into(),
+        path: PathBuf::from(".mise.toml"),
+        evidence: EvidenceKind::Lock,
+        metadata: Default::default(),
+    }];
+    let ctx = EcosystemCtx {
+        repo: &repo,
+        lock_pins: &stale_lock,
+        offline: true,
+        pin_exact_ranges: true,
+        resolve_mode: ResolveMode::Upgrade,
+    };
+    let finding = Finding {
+        ecosystem: EcosystemKind::Mise,
+        name: "node".into(),
+        requested: "22.11.0".into(),
+        path: PathBuf::from(".mise.toml"),
+        is_floating: false,
+    };
+    let err = eco.resolve(&[finding], &ctx).unwrap_err();
+    let msg = err.to_string();
+    assert!(
+        msg.contains("offline") || msg.contains("PINNER_MISE_RESOLVE_MAP"),
+        "upgrade must not freeze on lock; got {msg}"
     );
 }
 

@@ -14,7 +14,7 @@ edges:
     condition: when setting up the dev environment or running the project for the first time
   - target: patterns/INDEX.md
     condition: when starting a task — check the pattern index for a matching pattern file
-last_updated: [YYYY-MM-DD]
+last_updated: 2026-08-05
 ---
 
 # Session Bootstrap
@@ -29,15 +29,18 @@ Then read this file fully before doing anything else in this session.
 - Multi-ecosystem pin/check/audit CLI with fixtures and local CI (`scripts/ci-local`)
 - Tag-driven releases (`semantic-release.yml` → `release.yml`) and mdBook docs Pages deploy
 - Workflows use Node 24 action majors (`checkout@v5`, `mise-action@v4`, artifact/pages v5–v7)
+- `pinner upgrade` shipped: core orchestration + CLI/walkthrough/`upgrade_pin`, all ecosystem `ResolveMode::Upgrade` paths (map → tool/registry), README matrix + mise `github:`/`cargo:` backends + 13 ecosystem guide pages + skill
+- Upgrade patterns: `ecosystem-upgrade-resolve.md`, `core-upgrade-orchestration.md`, `docs-upgrade-and-ecosystems.md`
 
 **Not yet built:**
-- Full `.mex/` pattern library (index still scaffold-level)
+- Broader `.mex/` pattern library beyond upgrade/release patterns (index still sparse outside those areas)
 
 **Known issues:**
 - Semantic-release tag push requires a valid classic `PAT_TOKEN` (repo secret); expired/wrong-scope PATs fail at push, not checkout
 - Fixed 2026-08-04: checkout’s persisted `GITHUB_TOKEN` `http.extraheader` was overriding the PAT URL, so tags pushed without triggering `release.yml` (e.g. stuck `v0.2.0`) — see `.mex/patterns/fix-semantic-release-chain.md`
 - Fixed 2026-08-04: tag-first `release.yml` rewrote Cargo.toml version then `cargo build --locked` failed until `cargo update -w` syncs path-package versions in Cargo.lock
 - Fixed 2026-08-04: `task install` showed `pinner v0.1.0` because Cargo.toml lagged tags; semantic-release now commits the workspace version bump before tagging
+- Fixed 2026-08-05: default ignore includes `**/tests/fixtures/**`; Upgrade passes prior lock pins for `previous` metadata while ecosystems still bypass lock for selection
 
 
 ## Routing Table

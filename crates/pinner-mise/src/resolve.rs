@@ -1,10 +1,14 @@
 use std::collections::HashMap;
 use std::env;
 
-use pinner_ecosystem::{EcosystemCtx, EcosystemError, EcosystemKind, EvidenceKind, Finding, Pin};
+use pinner_ecosystem::{
+    EcosystemCtx, EcosystemError, EcosystemKind, EvidenceKind, Finding, Pin, ResolveMode,
+    upgrade_pin,
+};
 use pinner_toolchain::CommandRunner;
 
 use crate::MiseEcosystem;
+use crate::extract::is_exact_semver;
 
 impl MiseEcosystem {
     pub(crate) fn resolve_findings(
@@ -15,7 +19,9 @@ impl MiseEcosystem {
         let map = resolve_map_from_env();
         let mut pins = Vec::with_capacity(findings.len());
         for finding in findings {
-            pins.push(resolve_one(self.runner.as_ref(), finding, ctx, &map)?);
+            if let Some(pin) = resolve_one(self.runner.as_ref(), finding, ctx, &map)? {
+                pins.push(pin);
+            }
         }
         Ok(pins)
     }
@@ -26,13 +32,17 @@ fn resolve_one(
     finding: &Finding,
     ctx: &EcosystemCtx<'_>,
     map: &HashMap<String, String>,
-) -> Result<Pin, EcosystemError> {
+) -> Result<Option<Pin>, EcosystemError> {
+    if ctx.resolve_mode == ResolveMode::Upgrade {
+        return resolve_upgrade(runner, finding, ctx, map);
+    }
+
     if let Some(lock) = ctx.lock_pins.iter().find(|pin| {
         pin.ecosystem == EcosystemKind::Mise
             && pin.name == finding.name
             && pin.requested == finding.requested
     }) {
-        return Ok(Pin {
+        return Ok(Some(Pin {
             ecosystem: EcosystemKind::Mise,
             name: finding.name.clone(),
             requested: finding.requested.clone(),
@@ -40,12 +50,12 @@ fn resolve_one(
             path: finding.path.clone(),
             evidence: EvidenceKind::Lock,
             metadata: lock.metadata.clone(),
-        });
+        }));
     }
 
     // PINNER_MISE_RESOLVE_MAP is checked before invoking mise (Task 10 e2e seam).
     if let Some(pinned) = map.get(&finding.name) {
-        return Ok(tool_pin(finding, pinned.clone()));
+        return Ok(Some(tool_pin(finding, pinned.clone())));
     }
 
     if ctx.offline {
@@ -61,7 +71,63 @@ fn resolve_one(
             requested: finding.requested.clone(),
             hint,
         })?;
-    Ok(tool_pin(finding, pinned))
+    Ok(Some(tool_pin(finding, pinned)))
+}
+
+fn resolve_upgrade(
+    runner: &dyn CommandRunner,
+    finding: &Finding,
+    ctx: &EcosystemCtx<'_>,
+    map: &HashMap<String, String>,
+) -> Result<Option<Pin>, EcosystemError> {
+    let previous = previous_for_upgrade(finding, ctx);
+
+    if let Some(newest) = map.get(&finding.name).cloned() {
+        return Ok(upgrade_pin(
+            finding,
+            &previous,
+            &newest,
+            EvidenceKind::Tool,
+            "map",
+        ));
+    }
+
+    if ctx.offline {
+        return Err(EcosystemError::Offline {
+            name: finding.name.clone(),
+            requested: finding.requested.clone(),
+        });
+    }
+
+    let newest =
+        resolve_via_mise(runner, &finding.name).map_err(|hint| EcosystemError::Resolve {
+            name: finding.name.clone(),
+            requested: finding.requested.clone(),
+            hint,
+        })?;
+
+    Ok(upgrade_pin(
+        finding,
+        &previous,
+        &newest,
+        EvidenceKind::Tool,
+        "mise",
+    ))
+}
+
+/// Display-only previous version: exact requested, else lock peek, else requested.
+fn previous_for_upgrade(finding: &Finding, ctx: &EcosystemCtx<'_>) -> String {
+    if is_exact_semver(&finding.requested) {
+        return finding.requested.clone();
+    }
+    if let Some(lock) = ctx.lock_pins.iter().find(|pin| {
+        pin.ecosystem == EcosystemKind::Mise
+            && pin.name == finding.name
+            && pin.requested == finding.requested
+    }) {
+        return lock.pinned.clone();
+    }
+    finding.requested.clone()
 }
 
 fn tool_pin(finding: &Finding, pinned: String) -> Pin {

@@ -39,6 +39,8 @@ pub struct Cli {
 pub enum Commands {
     /// Resolve floating versions and rewrite manifests / lockfile
     Pin,
+    /// Re-resolve declared deps to newest versions and rewrite / lock
+    Upgrade,
     /// Report drift against pinner.lock.json without writing
     Check,
     /// Report floating refs (text/JSON); `--fix` applies pin

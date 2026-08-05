@@ -1,0 +1,14 @@
+image: node:20@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+
+include:
+  - project: 'group/ci-templates'
+    file: '/template.yml'
+    ref: bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+
+stages:
+  - test
+
+test:
+  stage: test
+  script:
+    - npm test

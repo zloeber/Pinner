@@ -1,8 +1,10 @@
 use std::collections::HashMap;
+use std::env;
 use std::path::{Path, PathBuf};
 
 use pinner_ecosystem::{
-    EcosystemCtx, EcosystemError, EcosystemKind, EvidenceKind, Finding, Pin, absolute_in_repo,
+    EcosystemCtx, EcosystemError, EcosystemKind, EvidenceKind, Finding, Pin, ResolveMode,
+    absolute_in_repo, upgrade_pin,
 };
 use pinner_toolchain::{CommandRunner, RealCommandRunner};
 
@@ -15,11 +17,14 @@ impl PythonEcosystem {
         ctx: &EcosystemCtx<'_>,
     ) -> Result<Vec<Pin>, EcosystemError> {
         let runner = RealCommandRunner;
+        let map = resolve_map_from_env();
         let mut pins = Vec::with_capacity(findings.len());
         let mut lock_cache: HashMap<PathBuf, Option<HashMap<String, String>>> = HashMap::new();
 
         for finding in findings {
-            pins.push(resolve_one(&runner, finding, ctx, &mut lock_cache)?);
+            if let Some(pin) = resolve_one(&runner, finding, ctx, &map, &mut lock_cache)? {
+                pins.push(pin);
+            }
         }
         Ok(pins)
     }
@@ -29,14 +34,19 @@ fn resolve_one(
     runner: &dyn CommandRunner,
     finding: &Finding,
     ctx: &EcosystemCtx<'_>,
+    map: &HashMap<(String, String), String>,
     lock_cache: &mut HashMap<PathBuf, Option<HashMap<String, String>>>,
-) -> Result<Pin, EcosystemError> {
+) -> Result<Option<Pin>, EcosystemError> {
+    if ctx.resolve_mode == ResolveMode::Upgrade {
+        return resolve_upgrade(runner, finding, ctx, map, lock_cache);
+    }
+
     if let Some(lock) = ctx.lock_pins.iter().find(|pin| {
         pin.ecosystem == EcosystemKind::Python
             && pin.name == finding.name
             && pin.requested == finding.requested
     }) {
-        return Ok(Pin {
+        return Ok(Some(Pin {
             ecosystem: EcosystemKind::Python,
             name: finding.name.clone(),
             requested: finding.requested.clone(),
@@ -44,7 +54,7 @@ fn resolve_one(
             path: finding.path.clone(),
             evidence: EvidenceKind::Lock,
             metadata: lock.metadata.clone(),
-        });
+        }));
     }
 
     let abs_path = absolute_in_repo(ctx.repo, &finding.path);
@@ -54,7 +64,7 @@ fn resolve_one(
         .to_path_buf();
 
     if let Some(version) = find_python_lock_version(&dir, &finding.name, lock_cache)? {
-        return Ok(Pin {
+        return Ok(Some(Pin {
             ecosystem: EcosystemKind::Python,
             name: finding.name.clone(),
             requested: finding.requested.clone(),
@@ -62,7 +72,22 @@ fn resolve_one(
             path: finding.path.clone(),
             evidence: EvidenceKind::NativeLock,
             metadata: Default::default(),
-        });
+        }));
+    }
+
+    if let Some(pinned) = map
+        .get(&(finding.name.clone(), finding.requested.clone()))
+        .cloned()
+    {
+        return Ok(Some(Pin {
+            ecosystem: EcosystemKind::Python,
+            name: finding.name.clone(),
+            requested: finding.requested.clone(),
+            pinned,
+            path: finding.path.clone(),
+            evidence: EvidenceKind::Registry,
+            metadata: Default::default(),
+        }));
     }
 
     if ctx.offline {
@@ -79,7 +104,7 @@ fn resolve_one(
             hint,
         })?;
 
-    Ok(Pin {
+    Ok(Some(Pin {
         ecosystem: EcosystemKind::Python,
         name: finding.name.clone(),
         requested: finding.requested.clone(),
@@ -87,7 +112,116 @@ fn resolve_one(
         path: finding.path.clone(),
         evidence: EvidenceKind::Registry,
         metadata: Default::default(),
-    })
+    }))
+}
+
+fn resolve_upgrade(
+    runner: &dyn CommandRunner,
+    finding: &Finding,
+    ctx: &EcosystemCtx<'_>,
+    map: &HashMap<(String, String), String>,
+    lock_cache: &mut HashMap<PathBuf, Option<HashMap<String, String>>>,
+) -> Result<Option<Pin>, EcosystemError> {
+    let previous = previous_for_upgrade(finding, ctx, lock_cache)?;
+
+    if let Some(newest) = map
+        .get(&(finding.name.clone(), finding.requested.clone()))
+        .cloned()
+    {
+        return Ok(upgrade_pin(
+            finding,
+            &previous,
+            &newest,
+            EvidenceKind::Registry,
+            "map",
+        ));
+    }
+
+    if ctx.offline {
+        return Err(EcosystemError::Offline {
+            name: finding.name.clone(),
+            requested: finding.requested.clone(),
+        });
+    }
+
+    let newest =
+        resolve_via_uv_latest(runner, finding).map_err(|hint| EcosystemError::Resolve {
+            name: finding.name.clone(),
+            requested: finding.requested.clone(),
+            hint,
+        })?;
+
+    Ok(upgrade_pin(
+        finding,
+        &previous,
+        &newest,
+        EvidenceKind::Registry,
+        "uv",
+    ))
+}
+
+/// Display-only previous version: exact requested, else native-lock peek, else requested.
+fn previous_for_upgrade(
+    finding: &Finding,
+    ctx: &EcosystemCtx<'_>,
+    lock_cache: &mut HashMap<PathBuf, Option<HashMap<String, String>>>,
+) -> Result<String, EcosystemError> {
+    if is_exact_looking(&finding.requested) {
+        return Ok(finding.requested.clone());
+    }
+
+    let abs_path = absolute_in_repo(ctx.repo, &finding.path);
+    let dir = abs_path
+        .parent()
+        .unwrap_or_else(|| Path::new("."))
+        .to_path_buf();
+    if let Some(version) = find_python_lock_version(&dir, &finding.name, lock_cache)? {
+        return Ok(version);
+    }
+    Ok(finding.requested.clone())
+}
+
+/// Parse `PINNER_PYTHON_RESOLVE_MAP` entries shaped as `name=requested:pinned`.
+fn resolve_map_from_env() -> HashMap<(String, String), String> {
+    let Ok(raw) = env::var("PINNER_PYTHON_RESOLVE_MAP") else {
+        return HashMap::new();
+    };
+    parse_python_resolve_map(&raw)
+}
+
+fn parse_python_resolve_map(raw: &str) -> HashMap<(String, String), String> {
+    let mut map = HashMap::new();
+    for entry in raw.split([',', '\n']) {
+        let entry = entry.trim();
+        if entry.is_empty() {
+            continue;
+        }
+        let Some((name, rest)) = entry.split_once('=') else {
+            continue;
+        };
+        let Some((requested, pinned)) = rest.split_once(':') else {
+            continue;
+        };
+        let name = name.trim();
+        let requested = requested.trim();
+        let pinned = pinned.trim();
+        if !name.is_empty() && !pinned.is_empty() {
+            map.insert(
+                (name.to_string(), requested.to_string()),
+                pinned.to_string(),
+            );
+        }
+    }
+    map
+}
+
+/// Upgrade resolve: unconstrained package name so uv returns newest.
+fn resolve_via_uv_latest(runner: &dyn CommandRunner, finding: &Finding) -> Result<String, String> {
+    let unconstrained = Finding {
+        requested: String::new(),
+        ..finding.clone()
+    };
+    resolve_via_uv_pip_compile(runner, &unconstrained)
 }
 
 fn find_python_lock_version(
@@ -273,9 +407,24 @@ fn split_name_spec(line: &str) -> Option<(String, &str)> {
 
 #[cfg(test)]
 mod tests {
-    use super::read_toml_package_lock;
+    use super::{parse_python_resolve_map, read_toml_package_lock};
     use std::fs;
     use tempfile::tempdir;
+
+    #[test]
+    fn parse_name_requested_pinned() {
+        let map = parse_python_resolve_map("requests=2.32.3:2.33.0,httpx=>=0.27:0.28.0");
+        assert_eq!(
+            map.get(&("requests".into(), "2.32.3".into()))
+                .map(String::as_str),
+            Some("2.33.0")
+        );
+        assert_eq!(
+            map.get(&("httpx".into(), ">=0.27".into()))
+                .map(String::as_str),
+            Some("0.28.0")
+        );
+    }
 
     #[test]
     fn reads_poetry_lock_packages() {
