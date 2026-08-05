@@ -251,11 +251,7 @@ fn draw(frame: &mut Frame, app: &App) {
         Row::new(["", "eco", "name", transition_header, "path"])
             .style(Style::default().add_modifier(Modifier::BOLD)),
     )
-    .block(
-        Block::default()
-            .borders(Borders::ALL)
-            .title(table_title),
-    );
+    .block(Block::default().borders(Borders::ALL).title(table_title));
     frame.render_widget(table, chunks[1]);
 
     let help = match &app.mode {
@@ -351,7 +347,8 @@ mod tests {
     fn format_pin_transition_prefers_previous_for_upgrade() {
         let mut pin = sample_pin("1.0.0", "2.0.0");
         pin.metadata.insert("upgrade".into(), Value::Bool(true));
-        pin.metadata.insert("previous".into(), Value::String("1.0.0".into()));
+        pin.metadata
+            .insert("previous".into(), Value::String("1.0.0".into()));
         assert_eq!(format_pin_transition(&pin), "1.0.0 → 2.0.0");
     }
 }

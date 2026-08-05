@@ -65,7 +65,12 @@ fn resolve_one(
     }
 
     if let Some(pinned) = resolve_map_lookup(map, &finding.name, &finding.requested) {
-        return Ok(Some(k8s_pin(finding, pinned, EvidenceKind::Registry, &kind)));
+        return Ok(Some(k8s_pin(
+            finding,
+            pinned,
+            EvidenceKind::Registry,
+            &kind,
+        )));
     }
 
     if ctx.offline {
@@ -103,7 +108,12 @@ fn resolve_upgrade(
         .or_else(|| map.get(&inspect_ref).cloned())
     {
         return Ok(upgrade_k8s_pin(
-            finding, &previous, &newest, kind, EvidenceKind::Registry, "map",
+            finding,
+            &previous,
+            &newest,
+            kind,
+            EvidenceKind::Registry,
+            "map",
         ));
     }
 
@@ -140,10 +150,8 @@ fn upgrade_k8s_pin(
     channel: &str,
 ) -> Option<Pin> {
     let mut pin = upgrade_pin(finding, previous, newest, evidence, channel)?;
-    pin.metadata.insert(
-        "tag".into(),
-        Value::String(image_tag(&finding.requested)),
-    );
+    pin.metadata
+        .insert("tag".into(), Value::String(image_tag(&finding.requested)));
     pin.metadata
         .insert("kind".into(), Value::String(kind.to_string()));
     Some(pin)

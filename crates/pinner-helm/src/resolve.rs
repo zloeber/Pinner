@@ -195,7 +195,11 @@ fn resolve_chart_upgrade(
 
     if let Some(newest) = resolve_map_lookup(map, &finding.name, &finding.requested) {
         return Ok(upgrade_chart_pin(
-            finding, &previous, &newest, &repository, "map",
+            finding,
+            &previous,
+            &newest,
+            &repository,
+            "map",
         ));
     }
 
@@ -206,13 +210,14 @@ fn resolve_chart_upgrade(
         });
     }
 
-    let newest = resolve_helm_chart_version(runner, &finding.name, "*", &repository).map_err(
-        |hint| EcosystemError::Resolve {
-            name: finding.name.clone(),
-            requested: finding.requested.clone(),
-            hint,
-        },
-    )?;
+    let newest =
+        resolve_helm_chart_version(runner, &finding.name, "*", &repository).map_err(|hint| {
+            EcosystemError::Resolve {
+                name: finding.name.clone(),
+                requested: finding.requested.clone(),
+                hint,
+            }
+        })?;
 
     Ok(upgrade_chart_pin(
         finding,
@@ -230,13 +235,7 @@ fn upgrade_chart_pin(
     repository: &str,
     channel: &str,
 ) -> Option<Pin> {
-    let mut pin = upgrade_pin(
-        finding,
-        previous,
-        newest,
-        EvidenceKind::Registry,
-        channel,
-    )?;
+    let mut pin = upgrade_pin(finding, previous, newest, EvidenceKind::Registry, channel)?;
     pin.metadata
         .insert("chart".into(), Value::String(finding.name.clone()));
     pin.metadata

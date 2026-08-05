@@ -158,13 +158,12 @@ fn resolve_upgrade(
                 requested: finding.requested.clone(),
                 hint: "could not parse git module source for upgrade".into(),
             })?;
-        let sha = resolve_git_sha(runner, &repo_url, "HEAD").map_err(|hint| {
-            EcosystemError::Resolve {
+        let sha =
+            resolve_git_sha(runner, &repo_url, "HEAD").map_err(|hint| EcosystemError::Resolve {
                 name: finding.name.clone(),
                 requested: finding.requested.clone(),
                 hint,
-            }
-        })?;
+            })?;
         git_pinned_source(&finding.requested, &sha)
     } else if is_provider_finding(finding) {
         resolve_terraform_registry_provider(&finding.name, "*", &|url| http_get(runner, url))
@@ -199,9 +198,7 @@ fn resolve_upgrade(
         "registry"
     };
 
-    Ok(upgrade_pin(
-        finding, &previous, &newest, evidence, channel,
-    ))
+    Ok(upgrade_pin(finding, &previous, &newest, evidence, channel))
 }
 
 fn normalize_upgrade_pinned(finding: &Finding, pinned: String) -> String {

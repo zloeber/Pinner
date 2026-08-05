@@ -15,10 +15,7 @@ pub fn upgrade_pin(
     let mut metadata = Map::new();
     metadata.insert("upgrade".into(), Value::Bool(true));
     metadata.insert("previous".into(), Value::String(previous.to_string()));
-    metadata.insert(
-        "upgrade_channel".into(),
-        Value::String(channel.to_string()),
-    );
+    metadata.insert("upgrade_channel".into(), Value::String(channel.to_string()));
     Some(Pin {
         ecosystem: finding.ecosystem,
         name: finding.name.clone(),
