@@ -9,7 +9,7 @@ pub struct RunReport {
     pub rewrites: Vec<Rewrite>,
     pub findings: Vec<Finding>,
     pub drift: Vec<DriftItem>,
-    /// Count of pins applied by `upgrade` (0 for pin/check/audit).
+    /// Count of proposed/accepted upgrades from `upgrade` (includes dry-run; 0 for pin/check/audit).
     pub upgraded: usize,
 }
 

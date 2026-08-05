@@ -484,20 +484,32 @@ impl Ecosystem for FakeExactUpgradeEco {
         }
         findings
             .iter()
-            .map(|f| {
+            .filter_map(|f| {
+                // Display-only previous: prefer prior lock pin, else requested.
+                // Selection always uses the map/newer value (never lock.pinned).
+                let previous = ctx
+                    .lock_pins
+                    .iter()
+                    .find(|p| p.ecosystem == f.ecosystem && p.name == f.name && p.path == f.path)
+                    .map(|p| p.pinned.as_str())
+                    .unwrap_or(f.requested.as_str());
+                let newest = "2.0.0";
+                if previous == newest {
+                    return None;
+                }
                 let mut metadata = Map::new();
                 metadata.insert("upgrade".into(), Value::Bool(true));
-                metadata.insert("previous".into(), Value::String(f.requested.clone()));
-                metadata.insert("upgrade_channel".into(), Value::String("tool".into()));
-                Ok(Pin {
+                metadata.insert("previous".into(), Value::String(previous.to_string()));
+                metadata.insert("upgrade_channel".into(), Value::String("map".into()));
+                Some(Ok(Pin {
                     ecosystem: f.ecosystem,
                     name: f.name.clone(),
                     requested: f.requested.clone(),
-                    pinned: "2.0.0".into(),
+                    pinned: newest.into(),
                     path: f.path.clone(),
-                    evidence: EvidenceKind::Tool,
+                    evidence: EvidenceKind::Registry,
                     metadata,
-                })
+                }))
             })
             .collect()
     }
@@ -542,5 +554,50 @@ fn upgrade_rewrites_exact_pins_pin_does_not() {
     assert!(
         body.contains("1.0.0") && !body.contains("2.0.0"),
         "pin must leave exact pins alone, body={body}"
+    );
+}
+
+#[test]
+fn upgrade_sets_previous_from_prior_lock_while_choosing_newer() {
+    let dir = tempdir().unwrap();
+    std::fs::write(dir.path().join(".mise.toml"), "[tools]\ntool = \"1.0.0\"\n").unwrap();
+    LockFile::from_pins(
+        &[Pin {
+            ecosystem: EcosystemKind::Mise,
+            name: "tool".into(),
+            requested: "1.0.0".into(),
+            pinned: "1.5.0".into(),
+            path: Path::new(".mise.toml").to_path_buf(),
+            evidence: EvidenceKind::Tool,
+            metadata: Default::default(),
+        }],
+        "0.1.0",
+        "2026-08-05T00:00:00Z",
+    )
+    .write(&dir.path().join("pinner.lock.json"))
+    .unwrap();
+
+    let eco: Arc<dyn Ecosystem> = Arc::new(FakeExactUpgradeEco);
+    let mut opts = options(dir.path());
+    opts.dry_run = true;
+    let report = upgrade(&[eco], &Policy::default_policy(), &opts).unwrap();
+
+    assert_eq!(report.upgraded, 1);
+    let bump = report
+        .pins
+        .iter()
+        .find(|p| p.metadata.get("previous").is_some())
+        .expect("upgrade pin carries previous metadata");
+    assert_eq!(
+        bump.pinned, "2.0.0",
+        "must choose map/newer, not lock 1.5.0"
+    );
+    assert_eq!(
+        bump.metadata["previous"], "1.5.0",
+        "previous must peek prior lock, not only requested"
+    );
+    assert!(
+        report.rewrites[0].new_contents.contains("2.0.0"),
+        "rewrite must apply newer value"
     );
 }

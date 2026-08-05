@@ -40,6 +40,7 @@ Then read this file fully before doing anything else in this session.
 - Fixed 2026-08-04: checkout’s persisted `GITHUB_TOKEN` `http.extraheader` was overriding the PAT URL, so tags pushed without triggering `release.yml` (e.g. stuck `v0.2.0`) — see `.mex/patterns/fix-semantic-release-chain.md`
 - Fixed 2026-08-04: tag-first `release.yml` rewrote Cargo.toml version then `cargo build --locked` failed until `cargo update -w` syncs path-package versions in Cargo.lock
 - Fixed 2026-08-04: `task install` showed `pinner v0.1.0` because Cargo.toml lagged tags; semantic-release now commits the workspace version bump before tagging
+- Fixed 2026-08-05: default ignore includes `**/tests/fixtures/**`; Upgrade passes prior lock pins for `previous` metadata while ecosystems still bypass lock for selection
 
 
 ## Routing Table

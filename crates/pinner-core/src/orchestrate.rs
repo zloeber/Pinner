@@ -97,15 +97,12 @@ fn run_resolve_rewrite(
     let mut batches = Vec::new();
     let mut all_resolved = Vec::new();
     {
-        // Upgrade resolve bypasses pinner.lock; Pin mode still prefers it.
-        let empty_lock: &[Pin] = &[];
-        let lock_for_resolve: &[Pin] = match resolve_mode {
-            ResolveMode::Pin => &prior_lock,
-            ResolveMode::Upgrade => empty_lock,
-        };
+        // Always pass prior lock pins. Pin mode may select from them; Upgrade mode
+        // must ignore them for choosing newest (ecosystems branch on resolve_mode)
+        // but may peek them for display-only `previous` metadata.
         let ctx = EcosystemCtx {
             repo: &opts.repo,
-            lock_pins: lock_for_resolve,
+            lock_pins: &prior_lock,
             offline: opts.offline,
             pin_exact_ranges: policy.pin_exact_ranges,
             resolve_mode,

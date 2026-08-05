@@ -82,6 +82,8 @@ impl Policy {
                 "**/node_modules/**".to_string(),
                 "**/.git/**".to_string(),
                 "**/vendor/**".to_string(),
+                // Test fixture trees (dogfood pin/upgrade at repo roots).
+                "**/tests/fixtures/**".to_string(),
             ],
             false,
             true,

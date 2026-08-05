@@ -20,19 +20,22 @@ Load `pin_with_filter` / `run_resolve_rewrite` in `crates/pinner-core/src/orches
 ## Steps
 
 1. Select **all** extract findings (not only floating); do **not** filter `allow_floating`.
-2. Build `EcosystemCtx` with `resolve_mode: ResolveMode::Upgrade` and `lock_pins: &[]`.
+2. Build `EcosystemCtx` with `resolve_mode: ResolveMode::Upgrade` and **prior** `lock_pins` (same slice as pin). Ecosystems must ignore lock for newest selection; lock peek is for display-only `previous` metadata.
 3. After resolve, drop pins where `metadata.previous == pinned` (unchanged).
 4. Empty proposed set → success, **no writes**, `upgraded: 0`.
-5. Set `report.upgraded` to the count of applied upgrade pins.
+5. Set `report.upgraded` to the count of proposed/accepted upgrades (includes dry-run).
 6. Prefer resolved pins in `pins_for_full_graph` so exact bumps land in the lock.
 
 ## Gotchas
 
 - Pin mode must keep floating + allowlist filtering; only Upgrade takes all findings.
-- Prior lock is still needed for lock merge / unselected ecosystems even when resolve bypasses it.
+- Do **not** pass `lock_pins: &[]` in Upgrade — that kills `previous` lock peeks. Selection bypass is per-ecosystem via `resolve_mode`.
+- Default policy ignores `**/tests/fixtures/**` so dogfood at repo root does not walk fixture trees.
 - `RunReport.upgraded` serializes for all commands (0 outside upgrade).
 
 ## Verify
 
 - [ ] `cargo test -p pinner-core upgrade_rewrites_exact_pins_pin_does_not`
+- [ ] `cargo test -p pinner-core upgrade_sets_previous_from_prior_lock`
+- [ ] `cargo test -p pinner-core ignore_globs_skip_tests_fixtures`
 - [ ] `cargo test -p pinner-core` (pin idempotency / walkthrough still green)

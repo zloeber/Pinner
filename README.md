@@ -94,7 +94,7 @@ terraform = true   # default on
 helm = true        # opt-in (default off)
 k8s = true         # opt-in (default off)
 
-ignore = ["**/node_modules/**", "**/.git/**", "**/vendor/**"]
+ignore = ["**/node_modules/**", "**/.git/**", "**/vendor/**", "**/tests/fixtures/**"]
 
 [toolchain]
 install = true

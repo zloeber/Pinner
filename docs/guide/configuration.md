@@ -18,7 +18,7 @@ k8s = false        # opt-in
 gitlab = false     # opt-in
 azure = false      # opt-in
 
-ignore = ["**/node_modules/**", "**/.git/**", "**/vendor/**"]
+ignore = ["**/node_modules/**", "**/.git/**", "**/vendor/**", "**/tests/fixtures/**"]
 
 [toolchain]
 install = true
@@ -35,7 +35,9 @@ Global flags: `--config`, `--offline`, `--dry-run`, `--ecosystem mise,terraform`
 
 `pinner upgrade` uses the same globals and `[ecosystems]` enable flags as `pin` / `check`. There is **no** `[upgrade]` table and no new required `pinner.toml` keys in v1. `--ecosystem` still filters enabled kinds only.
 
-Upgrade skips native lock evidence (and Terraform `.terraform.lock.hcl`) so bumps target latest from preferred tools / registries / resolve maps — see [ecosystems](ecosystems/README.md).
+Upgrade skips native lock evidence (and Terraform `.terraform.lock.hcl`) so bumps target latest from preferred tools / registries / resolve maps — see [ecosystems](ecosystems/README.md). Prior `pinner.lock.json` pins are still passed into resolve context for display-only `previous` metadata.
+
+Default ignore globs include `**/tests/fixtures/**` so dogfooding pin/upgrade at a repo root does not walk fixture trees.
 
 ## Agent vs walkthrough
 

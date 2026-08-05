@@ -27,6 +27,18 @@ fn ignore_globs_skip_node_modules() {
 }
 
 #[test]
+fn ignore_globs_skip_tests_fixtures() {
+    let p = Policy::default_policy();
+    assert!(p.is_ignored(std::path::Path::new(
+        "tests/fixtures/mise-floating/.mise.toml"
+    )));
+    assert!(p.is_ignored(std::path::Path::new(
+        "crates/foo/tests/fixtures/sample/Cargo.toml"
+    )));
+    assert!(!p.is_ignored(std::path::Path::new("tests/integration/smoke.toml")));
+}
+
+#[test]
 fn defaults_enable_terraform_but_not_helm_or_k8s() {
     let p = Policy::default_policy();
     assert!(p.is_enabled(EcosystemKind::Terraform));
