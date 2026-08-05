@@ -128,15 +128,13 @@ pub fn emit_pretty_audit(
         .map(|f| f.name.len())
         .max()
         .unwrap_or(4)
-        .max(4)
-        .min(28);
+        .clamp(4, 28);
     let req_w = findings
         .iter()
         .map(|f| f.requested.len())
         .max()
         .unwrap_or(9)
-        .max(9)
-        .min(24);
+        .clamp(9, 24);
 
     if color {
         write!(writer, "{}", SetForegroundColor(Color::DarkGrey))?;
@@ -209,7 +207,7 @@ fn write_rule(
 ) -> std::io::Result<()> {
     let title_len = title.chars().count();
     let fill_len = inner_width.saturating_sub(title_len);
-    let fill_str: String = std::iter::repeat(fill).take(fill_len).collect();
+    let fill_str = fill.to_string().repeat(fill_len);
     writeln!(writer, "{left}{title}{fill_str}{right}")
 }
 
