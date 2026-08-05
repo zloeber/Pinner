@@ -1,3 +1,5 @@
+mod upgrade;
+
 use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
@@ -131,6 +133,8 @@ pub enum EcosystemError {
     #[error("offline: cannot resolve {name} ({requested})")]
     Offline { name: String, requested: String },
 }
+
+pub use upgrade::upgrade_pin;
 
 pub trait Ecosystem: Send + Sync {
     fn kind(&self) -> EcosystemKind;
