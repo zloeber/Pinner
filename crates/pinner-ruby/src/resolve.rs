@@ -3,8 +3,12 @@ use std::env;
 use std::path::{Path, PathBuf};
 
 use pinner_ecosystem::{
-    EcosystemCtx, EcosystemError, EcosystemKind, EvidenceKind, Finding, Pin, absolute_in_repo,
+    EcosystemCtx, EcosystemError, EcosystemKind, EvidenceKind, Finding, Pin, ResolveMode,
+    absolute_in_repo, upgrade_pin,
 };
+use pinner_iac_common::http_get;
+use pinner_toolchain::{CommandRunner, RealCommandRunner};
+use serde_json::Value;
 
 use crate::RubyEcosystem;
 
@@ -14,29 +18,37 @@ impl RubyEcosystem {
         findings: &[Finding],
         ctx: &EcosystemCtx<'_>,
     ) -> Result<Vec<Pin>, EcosystemError> {
+        let runner = RealCommandRunner;
         let map = resolve_map_from_env();
         let mut pins = Vec::with_capacity(findings.len());
         let mut lock_cache: HashMap<PathBuf, Option<HashMap<String, String>>> = HashMap::new();
 
         for finding in findings {
-            pins.push(resolve_one(finding, ctx, &map, &mut lock_cache)?);
+            if let Some(pin) = resolve_one(&runner, finding, ctx, &map, &mut lock_cache)? {
+                pins.push(pin);
+            }
         }
         Ok(pins)
     }
 }
 
 fn resolve_one(
+    runner: &dyn CommandRunner,
     finding: &Finding,
     ctx: &EcosystemCtx<'_>,
     map: &HashMap<(String, String), String>,
     lock_cache: &mut HashMap<PathBuf, Option<HashMap<String, String>>>,
-) -> Result<Pin, EcosystemError> {
+) -> Result<Option<Pin>, EcosystemError> {
+    if ctx.resolve_mode == ResolveMode::Upgrade {
+        return resolve_upgrade(runner, finding, ctx, map, lock_cache);
+    }
+
     if let Some(lock) = ctx.lock_pins.iter().find(|pin| {
         pin.ecosystem == EcosystemKind::Ruby
             && pin.name == finding.name
             && pin.requested == finding.requested
     }) {
-        return Ok(Pin {
+        return Ok(Some(Pin {
             ecosystem: EcosystemKind::Ruby,
             name: finding.name.clone(),
             requested: finding.requested.clone(),
@@ -44,7 +56,7 @@ fn resolve_one(
             path: finding.path.clone(),
             evidence: EvidenceKind::Lock,
             metadata: lock.metadata.clone(),
-        });
+        }));
     }
 
     let abs_path = absolute_in_repo(ctx.repo, &finding.path);
@@ -54,7 +66,7 @@ fn resolve_one(
         .to_path_buf();
 
     if let Some(version) = find_gemfile_lock_version(&dir, &finding.name, lock_cache)? {
-        return Ok(Pin {
+        return Ok(Some(Pin {
             ecosystem: EcosystemKind::Ruby,
             name: finding.name.clone(),
             requested: finding.requested.clone(),
@@ -62,14 +74,14 @@ fn resolve_one(
             path: finding.path.clone(),
             evidence: EvidenceKind::NativeLock,
             metadata: Default::default(),
-        });
+        }));
     }
 
     if let Some(pinned) = map
         .get(&(finding.name.clone(), finding.requested.clone()))
         .cloned()
     {
-        return Ok(Pin {
+        return Ok(Some(Pin {
             ecosystem: EcosystemKind::Ruby,
             name: finding.name.clone(),
             requested: finding.requested.clone(),
@@ -77,7 +89,7 @@ fn resolve_one(
             path: finding.path.clone(),
             evidence: EvidenceKind::Registry,
             metadata: Default::default(),
-        });
+        }));
     }
 
     if ctx.offline {
@@ -92,6 +104,112 @@ fn resolve_one(
         requested: finding.requested.clone(),
         hint: "set PINNER_RUBY_RESOLVE_MAP (name=requested:pinned) or provide Gemfile.lock".into(),
     })
+}
+
+fn resolve_upgrade(
+    runner: &dyn CommandRunner,
+    finding: &Finding,
+    ctx: &EcosystemCtx<'_>,
+    map: &HashMap<(String, String), String>,
+    lock_cache: &mut HashMap<PathBuf, Option<HashMap<String, String>>>,
+) -> Result<Option<Pin>, EcosystemError> {
+    let previous = previous_for_upgrade(finding, ctx, lock_cache)?;
+
+    if let Some(newest) = map
+        .get(&(finding.name.clone(), finding.requested.clone()))
+        .cloned()
+    {
+        return Ok(upgrade_pin(
+            finding,
+            &previous,
+            &newest,
+            EvidenceKind::Registry,
+            "map",
+        ));
+    }
+
+    if ctx.offline {
+        return Err(EcosystemError::Offline {
+            name: finding.name.clone(),
+            requested: finding.requested.clone(),
+        });
+    }
+
+    let newest =
+        resolve_rubygems_latest(finding, &|url| http_get(runner, url)).map_err(|hint| {
+            EcosystemError::Resolve {
+                name: finding.name.clone(),
+                requested: finding.requested.clone(),
+                hint,
+            }
+        })?;
+
+    Ok(upgrade_pin(
+        finding,
+        &previous,
+        &newest,
+        EvidenceKind::Registry,
+        "rubygems",
+    ))
+}
+
+/// Display-only previous version: exact requested, else Gemfile.lock peek, else requested.
+fn previous_for_upgrade(
+    finding: &Finding,
+    ctx: &EcosystemCtx<'_>,
+    lock_cache: &mut HashMap<PathBuf, Option<HashMap<String, String>>>,
+) -> Result<String, EcosystemError> {
+    if is_exact_looking_ruby(&finding.requested) {
+        return Ok(finding.requested.clone());
+    }
+
+    let abs_path = absolute_in_repo(ctx.repo, &finding.path);
+    let dir = abs_path
+        .parent()
+        .unwrap_or_else(|| Path::new("."))
+        .to_path_buf();
+    if let Some(version) = find_gemfile_lock_version(&dir, &finding.name, lock_cache)? {
+        return Ok(version);
+    }
+    Ok(finding.requested.clone())
+}
+
+/// RubyGems `/api/v1/versions/{name}/latest.json` → `version`.
+pub fn resolve_rubygems_latest<F>(finding: &Finding, http_get_fn: &F) -> Result<String, String>
+where
+    F: Fn(&str) -> Result<String, String>,
+{
+    let url = format!(
+        "https://rubygems.org/api/v1/versions/{}/latest.json",
+        finding.name
+    );
+    let body = http_get_fn(&url)?;
+    parse_rubygems_latest(&body).ok_or_else(|| {
+        format!(
+            "RubyGems latest response missing version for {}",
+            finding.name
+        )
+    })
+}
+
+fn parse_rubygems_latest(body: &str) -> Option<String> {
+    let value: Value = serde_json::from_str(body).ok()?;
+    value
+        .get("version")
+        .and_then(|v| v.as_str())
+        .map(str::to_string)
+}
+
+fn is_exact_looking_ruby(requested: &str) -> bool {
+    let r = requested.trim();
+    if r.is_empty() || r == "*" || r.eq_ignore_ascii_case("latest") {
+        return false;
+    }
+    if r.starts_with(['>', '<', '=', '~', '!']) {
+        return false;
+    }
+    // Bare numeric-ish versions (e.g. 13.2.1).
+    r.chars().all(|c| c.is_ascii_digit() || c == '.') && r.contains('.')
 }
 
 fn find_gemfile_lock_version(
@@ -212,8 +330,13 @@ fn parse_ruby_resolve_map(raw: &str) -> HashMap<(String, String), String> {
 
 #[cfg(test)]
 mod tests {
-    use super::{parse_ruby_resolve_map, parse_spec_entry, read_gemfile_lock_versions};
+    use super::{
+        parse_ruby_resolve_map, parse_rubygems_latest, parse_spec_entry,
+        read_gemfile_lock_versions, resolve_rubygems_latest,
+    };
+    use pinner_ecosystem::{EcosystemKind, Finding};
     use std::fs;
+    use std::path::PathBuf;
     use tempfile::tempdir;
 
     #[test]
@@ -255,5 +378,30 @@ mod tests {
         assert_eq!(map.get("rake").map(String::as_str), Some("13.2.1"));
         assert_eq!(map.get("rspec").map(String::as_str), Some("3.13.0"));
         assert!(!map.contains_key("some-dep"));
+    }
+
+    #[test]
+    fn parses_rubygems_latest() {
+        assert_eq!(
+            parse_rubygems_latest(r#"{"version":"13.3.0"}"#).as_deref(),
+            Some("13.3.0")
+        );
+    }
+
+    #[test]
+    fn resolve_rubygems_uses_injected_http() {
+        let finding = Finding {
+            ecosystem: EcosystemKind::Ruby,
+            name: "rake".into(),
+            requested: "13.2.1".into(),
+            path: PathBuf::from("Gemfile"),
+            is_floating: false,
+        };
+        let pinned = resolve_rubygems_latest(&finding, &|url| {
+            assert!(url.contains("/versions/rake/latest.json"));
+            Ok(r#"{"version":"13.3.0"}"#.into())
+        })
+        .unwrap();
+        assert_eq!(pinned, "13.3.0");
     }
 }

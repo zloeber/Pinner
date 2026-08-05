@@ -1,6 +1,6 @@
 use pinner_cargo::CargoEcosystem;
 use pinner_ecosystem::{
-    Ecosystem, EcosystemCtx, EcosystemKind, EvidenceKind, Manifest, ResolveMode,
+    Ecosystem, EcosystemCtx, EcosystemKind, EvidenceKind, Finding, Manifest, Pin, ResolveMode,
 };
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -14,6 +14,10 @@ fn env_lock() -> &'static Mutex<()> {
 
 fn fixture() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../tests/fixtures/cargo-floating")
+}
+
+fn upgrade_fixture() -> PathBuf {
+    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../tests/fixtures/cargo-upgrade")
 }
 
 #[test]
@@ -172,4 +176,113 @@ serde = "1"
         pinner_ecosystem::EcosystemError::Offline { .. }
             | pinner_ecosystem::EcosystemError::Resolve { .. }
     ));
+}
+
+#[test]
+fn upgrade_prefers_resolve_map_over_native_lock() {
+    let _guard = env_lock().lock().unwrap();
+    // SAFETY: test-only resolve seam; serialized via env_lock.
+    unsafe {
+        std::env::set_var("PINNER_CARGO_RESOLVE_MAP", "serde=1.0.200:1.0.210");
+    }
+    let eco = CargoEcosystem;
+    let repo = upgrade_fixture();
+    let stale_lock = [Pin {
+        ecosystem: EcosystemKind::Cargo,
+        name: "serde".into(),
+        requested: "1.0.200".into(),
+        pinned: "1.0.200".into(),
+        path: PathBuf::from("Cargo.toml"),
+        evidence: EvidenceKind::Lock,
+        metadata: Default::default(),
+    }];
+    let ctx = EcosystemCtx {
+        repo: &repo,
+        lock_pins: &stale_lock,
+        offline: true,
+        pin_exact_ranges: true,
+        resolve_mode: ResolveMode::Upgrade,
+    };
+    let finding = Finding {
+        ecosystem: EcosystemKind::Cargo,
+        name: "serde".into(),
+        requested: "1.0.200".into(),
+        path: PathBuf::from("Cargo.toml"),
+        is_floating: false,
+    };
+    let pins = eco.resolve(&[finding], &ctx).unwrap();
+    unsafe {
+        std::env::remove_var("PINNER_CARGO_RESOLVE_MAP");
+    }
+    assert_eq!(pins.len(), 1);
+    assert_eq!(pins[0].pinned, "1.0.210");
+    assert_eq!(pins[0].metadata["previous"], "1.0.200");
+    assert_eq!(pins[0].metadata["upgrade"], true);
+    assert_eq!(pins[0].metadata["upgrade_channel"], "map");
+    assert_ne!(pins[0].evidence, EvidenceKind::Lock);
+    assert_ne!(pins[0].evidence, EvidenceKind::NativeLock);
+}
+
+#[test]
+fn upgrade_omits_when_map_matches_previous() {
+    let _guard = env_lock().lock().unwrap();
+    // SAFETY: test-only resolve seam; serialized via env_lock.
+    unsafe {
+        std::env::set_var("PINNER_CARGO_RESOLVE_MAP", "serde=1.0.200:1.0.200");
+    }
+    let eco = CargoEcosystem;
+    let repo = upgrade_fixture();
+    let ctx = EcosystemCtx {
+        repo: &repo,
+        lock_pins: &[],
+        offline: true,
+        pin_exact_ranges: true,
+        resolve_mode: ResolveMode::Upgrade,
+    };
+    let finding = Finding {
+        ecosystem: EcosystemKind::Cargo,
+        name: "serde".into(),
+        requested: "1.0.200".into(),
+        path: PathBuf::from("Cargo.toml"),
+        is_floating: false,
+    };
+    let pins = eco.resolve(&[finding], &ctx).unwrap();
+    unsafe {
+        std::env::remove_var("PINNER_CARGO_RESOLVE_MAP");
+    }
+    assert!(
+        pins.is_empty(),
+        "unchanged upgrade must be omitted, got {pins:?}"
+    );
+}
+
+#[test]
+fn upgrade_offline_without_map_ignores_native_lock() {
+    let _guard = env_lock().lock().unwrap();
+    // SAFETY: clear map so resolve cannot succeed via seam.
+    unsafe {
+        std::env::remove_var("PINNER_CARGO_RESOLVE_MAP");
+    }
+    let eco = CargoEcosystem;
+    let repo = upgrade_fixture();
+    let ctx = EcosystemCtx {
+        repo: &repo,
+        lock_pins: &[],
+        offline: true,
+        pin_exact_ranges: true,
+        resolve_mode: ResolveMode::Upgrade,
+    };
+    let finding = Finding {
+        ecosystem: EcosystemKind::Cargo,
+        name: "serde".into(),
+        requested: "1.0.200".into(),
+        path: PathBuf::from("Cargo.toml"),
+        is_floating: false,
+    };
+    let err = eco.resolve(&[finding], &ctx).unwrap_err();
+    let msg = err.to_string();
+    assert!(
+        msg.contains("offline") || msg.contains("PINNER_CARGO_RESOLVE_MAP"),
+        "upgrade must not freeze on native lock; got {msg}"
+    );
 }

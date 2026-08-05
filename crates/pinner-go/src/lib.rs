@@ -9,6 +9,8 @@ use pinner_ecosystem::{
     Ecosystem, EcosystemCtx, EcosystemError, EcosystemKind, Finding, Manifest, Pin, Rewrite,
 };
 
+pub use resolve::resolve_proxy_golang_latest;
+
 /// Go ecosystem: discover/extract/resolve/rewrite `go.mod` (+ lockfile evidence).
 #[derive(Debug, Default, Clone, Copy)]
 pub struct GoEcosystem;

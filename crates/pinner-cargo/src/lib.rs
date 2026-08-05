@@ -9,6 +9,8 @@ use pinner_ecosystem::{
     Ecosystem, EcosystemCtx, EcosystemError, EcosystemKind, Finding, Manifest, Pin, Rewrite,
 };
 
+pub use resolve::resolve_crates_io_max_version;
+
 /// Cargo ecosystem: discover/extract/resolve/rewrite `Cargo.toml` (+ lockfile evidence).
 #[derive(Debug, Default, Clone, Copy)]
 pub struct CargoEcosystem;

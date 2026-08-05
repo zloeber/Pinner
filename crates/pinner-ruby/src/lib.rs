@@ -9,6 +9,8 @@ use pinner_ecosystem::{
     Ecosystem, EcosystemCtx, EcosystemError, EcosystemKind, Finding, Manifest, Pin, Rewrite,
 };
 
+pub use resolve::resolve_rubygems_latest;
+
 /// Ruby ecosystem: discover/extract/resolve/rewrite `Gemfile` (+ lockfile evidence).
 #[derive(Debug, Default, Clone, Copy)]
 pub struct RubyEcosystem;

@@ -3,8 +3,12 @@ use std::env;
 use std::path::{Path, PathBuf};
 
 use pinner_ecosystem::{
-    EcosystemCtx, EcosystemError, EcosystemKind, EvidenceKind, Finding, Pin, absolute_in_repo,
+    EcosystemCtx, EcosystemError, EcosystemKind, EvidenceKind, Finding, Pin, ResolveMode,
+    absolute_in_repo, upgrade_pin,
 };
+use pinner_iac_common::http_get;
+use pinner_toolchain::{CommandRunner, RealCommandRunner};
+use serde_json::Value;
 
 use crate::GoEcosystem;
 
@@ -14,29 +18,37 @@ impl GoEcosystem {
         findings: &[Finding],
         ctx: &EcosystemCtx<'_>,
     ) -> Result<Vec<Pin>, EcosystemError> {
+        let runner = RealCommandRunner;
         let map = resolve_map_from_env();
         let mut pins = Vec::with_capacity(findings.len());
         let mut sum_cache: HashMap<PathBuf, Option<HashMap<String, String>>> = HashMap::new();
 
         for finding in findings {
-            pins.push(resolve_one(finding, ctx, &map, &mut sum_cache)?);
+            if let Some(pin) = resolve_one(&runner, finding, ctx, &map, &mut sum_cache)? {
+                pins.push(pin);
+            }
         }
         Ok(pins)
     }
 }
 
 fn resolve_one(
+    runner: &dyn CommandRunner,
     finding: &Finding,
     ctx: &EcosystemCtx<'_>,
     map: &HashMap<(String, String), String>,
     sum_cache: &mut HashMap<PathBuf, Option<HashMap<String, String>>>,
-) -> Result<Pin, EcosystemError> {
+) -> Result<Option<Pin>, EcosystemError> {
+    if ctx.resolve_mode == ResolveMode::Upgrade {
+        return resolve_upgrade(runner, finding, ctx, map, sum_cache);
+    }
+
     if let Some(lock) = ctx.lock_pins.iter().find(|pin| {
         pin.ecosystem == EcosystemKind::Go
             && pin.name == finding.name
             && pin.requested == finding.requested
     }) {
-        return Ok(Pin {
+        return Ok(Some(Pin {
             ecosystem: EcosystemKind::Go,
             name: finding.name.clone(),
             requested: finding.requested.clone(),
@@ -44,7 +56,7 @@ fn resolve_one(
             path: finding.path.clone(),
             evidence: EvidenceKind::Lock,
             metadata: lock.metadata.clone(),
-        });
+        }));
     }
 
     let abs_path = absolute_in_repo(ctx.repo, &finding.path);
@@ -54,7 +66,7 @@ fn resolve_one(
         .to_path_buf();
 
     if let Some(version) = find_go_sum_version(ctx.repo, &dir, &finding.name, sum_cache)? {
-        return Ok(Pin {
+        return Ok(Some(Pin {
             ecosystem: EcosystemKind::Go,
             name: finding.name.clone(),
             requested: finding.requested.clone(),
@@ -62,14 +74,14 @@ fn resolve_one(
             path: finding.path.clone(),
             evidence: EvidenceKind::NativeLock,
             metadata: Default::default(),
-        });
+        }));
     }
 
     if let Some(pinned) = map
         .get(&(finding.name.clone(), finding.requested.clone()))
         .cloned()
     {
-        return Ok(Pin {
+        return Ok(Some(Pin {
             ecosystem: EcosystemKind::Go,
             name: finding.name.clone(),
             requested: finding.requested.clone(),
@@ -77,7 +89,7 @@ fn resolve_one(
             path: finding.path.clone(),
             evidence: EvidenceKind::Registry,
             metadata: Default::default(),
-        });
+        }));
     }
 
     if ctx.offline {
@@ -92,6 +104,157 @@ fn resolve_one(
         requested: finding.requested.clone(),
         hint: "set PINNER_GO_RESOLVE_MAP (name=requested:pinned) or provide go.sum".into(),
     })
+}
+
+fn resolve_upgrade(
+    runner: &dyn CommandRunner,
+    finding: &Finding,
+    ctx: &EcosystemCtx<'_>,
+    map: &HashMap<(String, String), String>,
+    sum_cache: &mut HashMap<PathBuf, Option<HashMap<String, String>>>,
+) -> Result<Option<Pin>, EcosystemError> {
+    let previous = previous_for_upgrade(finding, ctx, sum_cache)?;
+
+    if let Some(newest) = map
+        .get(&(finding.name.clone(), finding.requested.clone()))
+        .cloned()
+    {
+        return Ok(upgrade_pin(
+            finding,
+            &previous,
+            &newest,
+            EvidenceKind::Registry,
+            "map",
+        ));
+    }
+
+    if ctx.offline {
+        return Err(EcosystemError::Offline {
+            name: finding.name.clone(),
+            requested: finding.requested.clone(),
+        });
+    }
+
+    let (newest, evidence, channel) = match resolve_via_go_list(runner, &finding.name) {
+        Ok(version) => (version, EvidenceKind::Tool, "go-list"),
+        Err(go_err) => {
+            let version = resolve_proxy_golang_latest(&finding.name, &|url| http_get(runner, url))
+                .map_err(|proxy_err| EcosystemError::Resolve {
+                    name: finding.name.clone(),
+                    requested: finding.requested.clone(),
+                    hint: format!(
+                        "go list failed ({go_err}); proxy.golang.org failed ({proxy_err})"
+                    ),
+                })?;
+            (version, EvidenceKind::Registry, "proxy.golang.org")
+        }
+    };
+
+    Ok(upgrade_pin(finding, &previous, &newest, evidence, channel))
+}
+
+/// Display-only previous version: exact requested, else go.sum peek, else requested.
+fn previous_for_upgrade(
+    finding: &Finding,
+    ctx: &EcosystemCtx<'_>,
+    sum_cache: &mut HashMap<PathBuf, Option<HashMap<String, String>>>,
+) -> Result<String, EcosystemError> {
+    if is_exact_looking_go(&finding.requested) {
+        return Ok(finding.requested.clone());
+    }
+
+    let abs_path = absolute_in_repo(ctx.repo, &finding.path);
+    let dir = abs_path
+        .parent()
+        .unwrap_or_else(|| Path::new("."))
+        .to_path_buf();
+    if let Some(version) = find_go_sum_version(ctx.repo, &dir, &finding.name, sum_cache)? {
+        return Ok(version);
+    }
+    Ok(finding.requested.clone())
+}
+
+fn resolve_via_go_list(runner: &dyn CommandRunner, module: &str) -> Result<String, String> {
+    let probe = runner
+        .run("go", &["version"])
+        .map_err(|err| format!("go not available: {err}"))?;
+    if probe.status != 0 {
+        return Err(format!(
+            "go not available (status {}): {}",
+            probe.status,
+            probe.stderr.trim()
+        ));
+    }
+
+    let query = format!("{module}@latest");
+    let output = runner
+        .run("go", &["list", "-m", "-u", "-json", &query])
+        .map_err(|err| format!("go list: {err}"))?;
+    if output.status != 0 {
+        return Err(format!(
+            "go list failed (status {}): {}",
+            output.status,
+            output.stderr.trim()
+        ));
+    }
+    parse_go_list_version(&output.stdout)
+        .ok_or_else(|| format!("go list JSON missing Version for {module}"))
+}
+
+fn parse_go_list_version(stdout: &str) -> Option<String> {
+    let value: Value = serde_json::from_str(stdout.trim()).ok()?;
+    if let Some(update) = value.get("Update")
+        && let Some(version) = update.get("Version").and_then(|v| v.as_str())
+    {
+        return Some(version.to_string());
+    }
+    value
+        .get("Version")
+        .and_then(|v| v.as_str())
+        .map(str::to_string)
+}
+
+/// proxy.golang.org `/{module}/@latest` → `Version`.
+pub fn resolve_proxy_golang_latest<F>(module: &str, http_get_fn: &F) -> Result<String, String>
+where
+    F: Fn(&str) -> Result<String, String>,
+{
+    let escaped = escape_module_path(module);
+    let url = format!("https://proxy.golang.org/{escaped}/@latest");
+    let body = http_get_fn(&url)?;
+    parse_proxy_golang_version(&body)
+        .ok_or_else(|| format!("proxy.golang.org response missing Version for {module}"))
+}
+
+fn parse_proxy_golang_version(body: &str) -> Option<String> {
+    let value: Value = serde_json::from_str(body).ok()?;
+    value
+        .get("Version")
+        .and_then(|v| v.as_str())
+        .map(str::to_string)
+}
+
+/// Case-encode module path for the module proxy (uppercase → `!` + lowercase).
+fn escape_module_path(path: &str) -> String {
+    let mut out = String::with_capacity(path.len());
+    for c in path.chars() {
+        if c.is_ascii_uppercase() {
+            out.push('!');
+            out.push(c.to_ascii_lowercase());
+        } else {
+            out.push(c);
+        }
+    }
+    out
+}
+
+fn is_exact_looking_go(requested: &str) -> bool {
+    let r = requested.trim();
+    if r.is_empty() || r.eq_ignore_ascii_case("latest") {
+        return false;
+    }
+    // Pseudo-versions and semver tags start with `v`.
+    r.starts_with('v')
 }
 
 fn find_go_sum_version(
@@ -189,7 +352,10 @@ fn parse_go_resolve_map(raw: &str) -> HashMap<(String, String), String> {
 
 #[cfg(test)]
 mod tests {
-    use super::{find_go_sum_version, parse_go_resolve_map, read_go_sum_versions};
+    use super::{
+        escape_module_path, find_go_sum_version, parse_go_list_version, parse_go_resolve_map,
+        parse_proxy_golang_version, read_go_sum_versions, resolve_proxy_golang_latest,
+    };
     use std::collections::HashMap;
     use std::fs;
     use std::path::PathBuf;
@@ -262,6 +428,36 @@ mod tests {
             find_go_sum_version(&repo, &sub, "github.com/example/lib", &mut cache)
                 .unwrap()
                 .is_none()
+        );
+    }
+
+    #[test]
+    fn escape_encodes_uppercase() {
+        assert_eq!(
+            escape_module_path("github.com/Azure/go-autorest"),
+            "github.com/!azure/go-autorest"
+        );
+    }
+
+    #[test]
+    fn parses_go_list_prefers_update() {
+        let body = r#"{"Path":"m","Version":"v1.0.0","Update":{"Path":"m","Version":"v1.1.0"}}"#;
+        assert_eq!(parse_go_list_version(body).as_deref(), Some("v1.1.0"));
+        let latest = r#"{"Path":"m","Version":"v2.0.0"}"#;
+        assert_eq!(parse_go_list_version(latest).as_deref(), Some("v2.0.0"));
+    }
+
+    #[test]
+    fn resolve_proxy_uses_injected_http() {
+        let pinned = resolve_proxy_golang_latest("github.com/example/lib", &|url| {
+            assert!(url.contains("github.com/example/lib/@latest"));
+            Ok(r#"{"Version":"v1.9.9"}"#.into())
+        })
+        .unwrap();
+        assert_eq!(pinned, "v1.9.9");
+        assert_eq!(
+            parse_proxy_golang_version(r#"{"Version":"v1.2.3"}"#).as_deref(),
+            Some("v1.2.3")
         );
     }
 }

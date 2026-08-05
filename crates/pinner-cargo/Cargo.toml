@@ -7,6 +7,9 @@ repository.workspace = true
 
 [dependencies]
 pinner-ecosystem = { workspace = true }
+pinner-iac-common = { workspace = true }
+pinner-toolchain = { workspace = true }
+serde_json = { workspace = true }
 toml = { workspace = true }
 toml_edit = { workspace = true }
 walkdir = { workspace = true }
