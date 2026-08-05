@@ -29,14 +29,11 @@ Then read this file fully before doing anything else in this session.
 - Multi-ecosystem pin/check/audit CLI with fixtures and local CI (`scripts/ci-local`)
 - Tag-driven releases (`semantic-release.yml` → `release.yml`) and mdBook docs Pages deploy
 - Workflows use Node 24 action majors (`checkout@v5`, `mise-action@v4`, artifact/pages v5–v7)
-
-**Working (partial):**
-- Core `upgrade` / `upgrade_with_filter` + CLI + walkthrough + `upgrade_pin`
-- All ecosystem Upgrade resolve paths (python→azure) via `PINNER_*_RESOLVE_MAP` → tool/registry
-- Upgrade docs: README matrix + mise `github:`/`cargo:` backends + 13 ecosystem guide pages + skill (Task 11)
+- `pinner upgrade` shipped: core orchestration + CLI/walkthrough/`upgrade_pin`, all ecosystem `ResolveMode::Upgrade` paths (map → tool/registry), README matrix + mise `github:`/`cargo:` backends + 13 ecosystem guide pages + skill
+- Upgrade patterns: `ecosystem-upgrade-resolve.md`, `core-upgrade-orchestration.md`, `docs-upgrade-and-ecosystems.md`
 
 **Not yet built:**
-- Full `.mex/` pattern library (index still scaffold-level)
+- Broader `.mex/` pattern library beyond upgrade/release patterns (index still sparse outside those areas)
 
 **Known issues:**
 - Semantic-release tag push requires a valid classic `PAT_TOKEN` (repo secret); expired/wrong-scope PATs fail at push, not checkout
