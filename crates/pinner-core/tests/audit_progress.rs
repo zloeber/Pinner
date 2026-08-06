@@ -255,6 +255,7 @@ fn audit_findings_are_sorted_deterministically() {
         ecosystems_filter: Some(vec![EcosystemKind::Mise, EcosystemKind::Node]),
     };
     let report = audit(&ecosystems, &policy, &opts, None).unwrap();
+    assert_eq!(report.findings.len(), 2);
     let keys: Vec<_> = report
         .findings
         .iter()
@@ -266,7 +267,11 @@ fn audit_findings_are_sorted_deterministically() {
             )
         })
         .collect();
-    let mut sorted = keys.clone();
-    sorted.sort();
-    assert_eq!(keys, sorted);
+    assert_eq!(
+        keys,
+        vec![
+            ("mise".into(), "a.toml".into(), "dep".into()),
+            ("node".into(), "b.toml".into(), "dep".into()),
+        ]
+    );
 }

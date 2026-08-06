@@ -85,16 +85,15 @@ pub fn audit(
             });
             let mut extracted = Vec::new();
             for manifest in &manifests {
-                for mut finding in ecosystem
-                    .extract(manifest, &ctx)
-                    .inspect_err(|e| {
-                        emit(AuditEvent::EcosystemFailed {
-                            kind,
-                            error: e.to_string(),
-                        });
-                    })
-                    .map_err(CoreError::from)?
-                {
+                for mut finding in ecosystem.extract(manifest, &ctx).map_err(|e| {
+                    let err = CoreError::from(e);
+                    emit(AuditEvent::EcosystemFailed {
+                        kind,
+                        error: err.to_string(),
+                    });
+                    err
+                })? {
+
                     finding.path = repo_relative(&opts.repo, &finding.path);
                     extracted.push(finding);
                 }
