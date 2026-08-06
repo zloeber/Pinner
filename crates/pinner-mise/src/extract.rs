@@ -74,6 +74,12 @@ fn version_to_string(value: &toml::Value) -> String {
         toml::Value::String(s) => s.clone(),
         toml::Value::Integer(i) => i.to_string(),
         toml::Value::Float(f) => f.to_string(),
+        // Inline / full tables: `awscli = { version = "latest", ... }` and
+        // `[tools."http:gkg"]` / `version = "0.24.0"`.
+        toml::Value::Table(table) => table
+            .get("version")
+            .map(version_to_string)
+            .unwrap_or_else(|| value.to_string()),
         other => other.to_string(),
     }
 }

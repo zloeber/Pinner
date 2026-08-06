@@ -1,8 +1,13 @@
 use assert_cmd::prelude::*;
 use predicates::prelude::*;
+use std::path::PathBuf;
 use std::process::Command;
 use std::sync::{Mutex, OnceLock};
 use tempfile::tempdir;
+
+fn mise_complex_fixture() -> PathBuf {
+    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../tests/fixtures/mise-complex")
+}
 
 fn env_lock() -> &'static Mutex<()> {
     static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
@@ -33,6 +38,23 @@ fn audit_json_reports_floating_mise_tool() {
     unsafe {
         std::env::remove_var("PINNER_MISE_RESOLVE_MAP");
     }
+}
+
+#[test]
+fn audit_json_mise_complex_reports_backends_and_tables() {
+    let fixture = mise_complex_fixture();
+    Command::cargo_bin("pinner")
+        .unwrap()
+        .current_dir(&fixture)
+        .args(["audit", "--format", "json", "--ecosystem", "mise"])
+        .assert()
+        .failure()
+        .code(1)
+        .stdout(predicate::str::contains("\"name\":\"awscli\""))
+        .stdout(predicate::str::contains("\"requested\":\"latest\""))
+        .stdout(predicate::str::contains("\"name\":\"npm:skills\""))
+        .stdout(predicate::str::contains("\"name\":\"github:zloeber/pinner\""))
+        .stdout(predicate::str::contains("\"name\":\"yamllint\"").not());
 }
 
 #[test]

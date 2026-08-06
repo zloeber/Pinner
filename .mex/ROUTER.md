@@ -27,6 +27,7 @@ Then read this file fully before doing anything else in this session.
 
 **Working:**
 - Multi-ecosystem pin/check/audit CLI with fixtures and local CI (`scripts/ci-local`)
+- `tests/fixtures/mise-complex/` covers multi-backend mise tools (latest + exact + table/`http:` forms); extract/rewrite handle table `version` keys
 - Tag-driven releases (`semantic-release.yml` → `release.yml`) and mdBook docs Pages deploy
 - Workflows use Node 24 action majors (`checkout@v5`, `mise-action@v4`, artifact/pages v5–v7)
 - `pinner upgrade` shipped: core orchestration + CLI/walkthrough/`upgrade_pin`, all ecosystem `ResolveMode::Upgrade` paths (map → tool/registry), README matrix + mise `github:`/`cargo:` backends + 13 ecosystem guide pages + skill

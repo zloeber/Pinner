@@ -1291,6 +1291,23 @@ EOF
 
 ---
 
+### Task 0 (prerequisite / parallel): `mise-complex` fixture coverage
+
+**Files:**
+- Fixture: `tests/fixtures/mise-complex/.mise.toml` (already added)
+- Create: `crates/pinner-mise/tests/extract_complex.rs`
+- Modify: `crates/pinner-mise/src/extract.rs` (`version_to_string` for table `version`)
+- Modify: `crates/pinner-mise/src/rewrite.rs` (preserve inline/full table keys when pinning)
+- Modify: `crates/pinner-mise/tests/resolve_rewrite.rs` (table rewrite regression)
+
+**Why:** Real-world mise configs use backend keys (`npm:`, `github:`, `http:`), inline tables (`awscli = { version = "latest", ... }`), and nested `[tools."http:…"]` blocks. Extract must read `version` from tables; rewrite must not wipe `symlink_bins` / `platforms`.
+
+- [ ] Extract tests: 29 tools; latest/backends floating; exact semver not floating; table `version` decoded
+- [ ] Rewrite test: pin awscli + http:gkg without losing sibling keys
+- [ ] Commit: `test: cover mise-complex extract and table rewrite`
+
+---
+
 ## Spec coverage checklist
 
 | Spec requirement | Task |
