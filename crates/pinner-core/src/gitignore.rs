@@ -15,10 +15,11 @@ impl RepoIgnore {
         let mut builder = GitignoreBuilder::new(&root);
         let _ = builder.add_line(None, ".git/");
 
-        // Discover nested .gitignore files without descending into .git
+        // Discover nested .gitignore files. Apply gitignore while walking so we
+        // do not descend into already-ignored trees (e.g. node_modules).
         let walker = WalkBuilder::new(&root)
             .hidden(false)
-            .git_ignore(false)
+            .git_ignore(true)
             .git_global(false)
             .git_exclude(false)
             .filter_entry(|e| e.file_name() != ".git")
