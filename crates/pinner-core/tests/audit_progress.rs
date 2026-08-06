@@ -1,5 +1,5 @@
 use pinner_core::{AuditEvent, AuditPhase, AuditProgress, Policy, RunOptions, audit};
-use pinner_ecosystem::{Ecosystem, EcosystemKind, Finding, Manifest};
+use pinner_ecosystem::{Ecosystem, EcosystemError, EcosystemKind, Finding, Manifest};
 use std::sync::{Arc, Mutex};
 
 struct RecordingSink {
@@ -110,4 +110,77 @@ fn audit_emits_phase_events() {
         events.last(),
         Some(AuditEvent::AuditFinished { findings: 1 })
     ));
+}
+
+/// Stub that fails discover so audit can exercise the failure progress contract.
+struct FailDiscoverEco;
+
+impl Ecosystem for FailDiscoverEco {
+    fn kind(&self) -> EcosystemKind {
+        EcosystemKind::Mise
+    }
+
+    fn discover(&self, _repo: &std::path::Path) -> Result<Vec<Manifest>, EcosystemError> {
+        Err(EcosystemError::Parse {
+            path: std::path::PathBuf::from(".mise.toml"),
+            message: "forced discover failure".into(),
+        })
+    }
+
+    fn extract(
+        &self,
+        _manifest: &Manifest,
+        _ctx: &pinner_ecosystem::EcosystemCtx<'_>,
+    ) -> Result<Vec<Finding>, EcosystemError> {
+        Ok(vec![])
+    }
+
+    fn resolve(
+        &self,
+        _findings: &[Finding],
+        _ctx: &pinner_ecosystem::EcosystemCtx<'_>,
+    ) -> Result<Vec<pinner_ecosystem::Pin>, EcosystemError> {
+        Ok(vec![])
+    }
+
+    fn rewrite(
+        &self,
+        _manifest: &Manifest,
+        _pins: &[pinner_ecosystem::Pin],
+    ) -> Result<Option<pinner_ecosystem::Rewrite>, EcosystemError> {
+        Ok(None)
+    }
+}
+
+#[test]
+fn audit_emits_ecosystem_failed_without_finished() {
+    let dir = tempfile::tempdir().unwrap();
+    let sink = RecordingSink {
+        events: Mutex::new(Vec::new()),
+    };
+    let ecosystems: Vec<Arc<dyn Ecosystem>> = vec![Arc::new(FailDiscoverEco)];
+    let policy = Policy::default_policy();
+    let opts = RunOptions {
+        repo: dir.path().to_path_buf(),
+        dry_run: true,
+        offline: true,
+        ecosystems_filter: Some(vec![EcosystemKind::Mise]),
+    };
+    let result = audit(&ecosystems, &policy, &opts, Some(&sink));
+    assert!(result.is_err());
+    let events = sink.events.lock().unwrap().clone();
+    assert!(events.iter().any(|e| {
+        matches!(
+            e,
+            AuditEvent::EcosystemFailed {
+                kind: EcosystemKind::Mise,
+                ..
+            }
+        )
+    }));
+    assert!(
+        !events
+            .iter()
+            .any(|e| matches!(e, AuditEvent::AuditFinished { .. }))
+    );
 }
