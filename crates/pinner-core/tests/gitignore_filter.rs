@@ -104,7 +104,11 @@ fn audit_skips_gitignored_manifests() {
     let dir = tempdir().unwrap();
     fs::create_dir_all(dir.path().join("ignored")).unwrap();
     fs::write(dir.path().join(".gitignore"), "ignored/\n").unwrap();
-    fs::write(dir.path().join("ignored/.mise.toml"), "[tools]\nnode=\"latest\"\n").unwrap();
+    fs::write(
+        dir.path().join("ignored/.mise.toml"),
+        "[tools]\nnode=\"latest\"\n",
+    )
+    .unwrap();
     fs::write(dir.path().join(".mise.toml"), "[tools]\nnode=\"latest\"\n").unwrap();
 
     let ecosystems: Vec<Arc<dyn Ecosystem>> = vec![Arc::new(StubEco)];
@@ -115,17 +119,14 @@ fn audit_skips_gitignored_manifests() {
         offline: true,
         ecosystems_filter: None,
     };
-    // After Task 3 signature includes progress: pass None.
-    // For this task, if audit still has the old signature, call without progress.
-    let report = audit(&ecosystems, &policy, &opts).unwrap();
+    let report = audit(&ecosystems, &policy, &opts, None).unwrap();
     assert_eq!(report.findings.len(), 1);
     assert!(
         report.findings[0]
             .path
             .to_string_lossy()
             .contains(".mise.toml")
-            && !report
-                .findings[0]
+            && !report.findings[0]
                 .path
                 .to_string_lossy()
                 .contains("ignored")

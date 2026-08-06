@@ -49,7 +49,7 @@ fn run(cli: Cli) -> CliResult<ExitCode> {
                 emit_report(&report, format)?;
                 Ok(ExitCode::SUCCESS)
             } else {
-                let report = audit(&ecosystems, &policy, &opts)?;
+                let report = audit(&ecosystems, &policy, &opts, None)?;
                 emit_audit(&report, format)?;
                 if report.findings.is_empty() {
                     Ok(ExitCode::SUCCESS)

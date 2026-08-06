@@ -1,16 +1,18 @@
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-use pinner_ecosystem::{Ecosystem, EcosystemCtx, EvidenceKind, Pin, ResolveMode};
+use pinner_ecosystem::{Ecosystem, EcosystemCtx, EvidenceKind, Pin, ResolveMode, repo_relative};
 use serde::Serialize;
 
 use crate::error::CoreError;
 use crate::gitignore::RepoIgnore;
 use crate::lock::LockFile;
 use crate::orchestrate::{
-    LOCK_NAME, RunOptions, discover_and_extract, is_allowlisted, lock_to_pins, selected_ecosystems,
+    LOCK_NAME, RunOptions, discover_and_extract, discover_manifests, is_allowlisted, lock_to_pins,
+    selected_ecosystems,
 };
 use crate::policy::Policy;
+use crate::progress::{AuditEvent, AuditPhase, AuditProgress};
 use crate::report::RunReport;
 
 #[derive(Debug, Clone, Serialize)]
@@ -28,8 +30,14 @@ pub fn audit(
     ecosystems: &[Arc<dyn Ecosystem>],
     policy: &Policy,
     opts: &RunOptions,
+    progress: Option<&dyn AuditProgress>,
 ) -> Result<RunReport, CoreError> {
-    let gitignore = RepoIgnore::new(&opts.repo);
+    let emit = |event: AuditEvent| {
+        if let Some(p) = progress {
+            p.on_event(event);
+        }
+    };
+
     let lock_path = opts.repo.join(LOCK_NAME);
     let lock_pins = if lock_path.exists() {
         lock_to_pins(LockFile::read(&lock_path)?)
@@ -43,17 +51,74 @@ pub fn audit(
         pin_exact_ranges: policy.pin_exact_ranges,
         resolve_mode: ResolveMode::Pin,
     };
+    let gitignore = RepoIgnore::new(&opts.repo);
+
+    let selected: Vec<_> = selected_ecosystems(ecosystems, policy, opts).collect();
+    emit(AuditEvent::AuditStarted {
+        ecosystems: selected.iter().map(|e| e.kind()).collect(),
+    });
 
     let mut report = RunReport::default();
-    for ecosystem in selected_ecosystems(ecosystems, policy, opts) {
-        let (_manifests, extracted) =
-            discover_and_extract(ecosystem.as_ref(), policy, &opts.repo, &ctx, &gitignore)?;
+    for ecosystem in selected {
+        let kind = ecosystem.kind();
+        emit(AuditEvent::EcosystemStarted { kind });
+        emit(AuditEvent::EcosystemPhase {
+            kind,
+            phase: AuditPhase::Discover,
+        });
+        let manifests = match discover_manifests(ecosystem.as_ref(), policy, &opts.repo, &gitignore)
+        {
+            Ok(m) => m,
+            Err(err) => {
+                emit(AuditEvent::EcosystemFailed {
+                    kind,
+                    error: err.to_string(),
+                });
+                return Err(err);
+            }
+        };
+        emit(AuditEvent::EcosystemPhase {
+            kind,
+            phase: AuditPhase::Extract,
+        });
+        let mut extracted = Vec::new();
+        for manifest in &manifests {
+            match ecosystem.extract(manifest, &ctx) {
+                Ok(findings) => {
+                    for mut finding in findings {
+                        finding.path = repo_relative(&opts.repo, &finding.path);
+                        extracted.push(finding);
+                    }
+                }
+                Err(err) => {
+                    let core_err = CoreError::from(err);
+                    emit(AuditEvent::EcosystemFailed {
+                        kind,
+                        error: core_err.to_string(),
+                    });
+                    return Err(core_err);
+                }
+            }
+        }
+        let floating = extracted
+            .iter()
+            .filter(|f| f.is_floating && !is_allowlisted(f, policy, &opts.repo))
+            .count();
+        emit(AuditEvent::EcosystemFinished {
+            kind,
+            manifests: manifests.len(),
+            floating,
+        });
         report.findings.extend(
             extracted.into_iter().filter(|finding| {
                 finding.is_floating && !is_allowlisted(finding, policy, &opts.repo)
             }),
         );
     }
+
+    emit(AuditEvent::AuditFinished {
+        findings: report.findings.len(),
+    });
     Ok(report)
 }
 
