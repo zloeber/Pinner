@@ -184,3 +184,89 @@ fn audit_emits_ecosystem_failed_without_finished() {
             .any(|e| matches!(e, AuditEvent::AuditFinished { .. }))
     );
 }
+
+struct MultiStub {
+    kind: EcosystemKind,
+    file: &'static str,
+}
+
+impl Ecosystem for MultiStub {
+    fn kind(&self) -> EcosystemKind {
+        self.kind
+    }
+    fn discover(
+        &self,
+        repo: &std::path::Path,
+    ) -> Result<Vec<Manifest>, pinner_ecosystem::EcosystemError> {
+        Ok(vec![Manifest {
+            ecosystem: self.kind,
+            path: repo.join(self.file),
+        }])
+    }
+    fn extract(
+        &self,
+        manifest: &Manifest,
+        _ctx: &pinner_ecosystem::EcosystemCtx<'_>,
+    ) -> Result<Vec<Finding>, pinner_ecosystem::EcosystemError> {
+        Ok(vec![Finding {
+            ecosystem: self.kind,
+            name: "dep".into(),
+            requested: "latest".into(),
+            path: manifest.path.clone(),
+            is_floating: true,
+        }])
+    }
+    fn resolve(
+        &self,
+        _: &[Finding],
+        _: &pinner_ecosystem::EcosystemCtx<'_>,
+    ) -> Result<Vec<pinner_ecosystem::Pin>, pinner_ecosystem::EcosystemError> {
+        Ok(vec![])
+    }
+    fn rewrite(
+        &self,
+        _: &Manifest,
+        _: &[pinner_ecosystem::Pin],
+    ) -> Result<Option<pinner_ecosystem::Rewrite>, pinner_ecosystem::EcosystemError> {
+        Ok(None)
+    }
+}
+
+#[test]
+fn audit_findings_are_sorted_deterministically() {
+    let dir = tempfile::tempdir().unwrap();
+    std::fs::write(dir.path().join("b.toml"), "").unwrap();
+    std::fs::write(dir.path().join("a.toml"), "").unwrap();
+    let ecosystems: Vec<Arc<dyn Ecosystem>> = vec![
+        Arc::new(MultiStub {
+            kind: EcosystemKind::Node,
+            file: "b.toml",
+        }),
+        Arc::new(MultiStub {
+            kind: EcosystemKind::Mise,
+            file: "a.toml",
+        }),
+    ];
+    let policy = Policy::default_policy();
+    let opts = RunOptions {
+        repo: dir.path().to_path_buf(),
+        dry_run: true,
+        offline: true,
+        ecosystems_filter: Some(vec![EcosystemKind::Mise, EcosystemKind::Node]),
+    };
+    let report = audit(&ecosystems, &policy, &opts, None).unwrap();
+    let keys: Vec<_> = report
+        .findings
+        .iter()
+        .map(|f| {
+            (
+                f.ecosystem.as_str().to_string(),
+                f.path.to_string_lossy().into_owned(),
+                f.name.clone(),
+            )
+        })
+        .collect();
+    let mut sorted = keys.clone();
+    sorted.sort();
+    assert_eq!(keys, sorted);
+}

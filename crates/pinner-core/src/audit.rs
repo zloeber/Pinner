@@ -1,7 +1,10 @@
 use std::path::{Path, PathBuf};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
-use pinner_ecosystem::{Ecosystem, EcosystemCtx, EvidenceKind, Pin, ResolveMode, repo_relative};
+use pinner_ecosystem::{
+    Ecosystem, EcosystemCtx, EvidenceKind, Finding, Pin, ResolveMode, repo_relative,
+};
+use rayon::prelude::*;
 use serde::Serialize;
 
 use crate::error::CoreError;
@@ -32,8 +35,10 @@ pub fn audit(
     opts: &RunOptions,
     progress: Option<&dyn AuditProgress>,
 ) -> Result<RunReport, CoreError> {
+    let emit_lock = Mutex::new(());
     let emit = |event: AuditEvent| {
         if let Some(p) = progress {
+            let _g = emit_lock.lock().unwrap();
             p.on_event(event);
         }
     };
@@ -58,64 +63,68 @@ pub fn audit(
         ecosystems: selected.iter().map(|e| e.kind()).collect(),
     });
 
-    let mut report = RunReport::default();
-    for ecosystem in selected {
-        let kind = ecosystem.kind();
-        emit(AuditEvent::EcosystemStarted { kind });
-        emit(AuditEvent::EcosystemPhase {
-            kind,
-            phase: AuditPhase::Discover,
-        });
-        let manifests = match discover_manifests(ecosystem.as_ref(), policy, &opts.repo, &gitignore)
-        {
-            Ok(m) => m,
-            Err(err) => {
-                emit(AuditEvent::EcosystemFailed {
-                    kind,
-                    error: err.to_string(),
-                });
-                return Err(err);
-            }
-        };
-        emit(AuditEvent::EcosystemPhase {
-            kind,
-            phase: AuditPhase::Extract,
-        });
-        let mut extracted = Vec::new();
-        for manifest in &manifests {
-            match ecosystem.extract(manifest, &ctx) {
-                Ok(findings) => {
-                    for mut finding in findings {
-                        finding.path = repo_relative(&opts.repo, &finding.path);
-                        extracted.push(finding);
-                    }
-                }
-                Err(err) => {
-                    let core_err = CoreError::from(err);
+    let results: Vec<Result<Vec<Finding>, CoreError>> = selected
+        .par_iter()
+        .map(|ecosystem| {
+            let kind = ecosystem.kind();
+            emit(AuditEvent::EcosystemStarted { kind });
+            emit(AuditEvent::EcosystemPhase {
+                kind,
+                phase: AuditPhase::Discover,
+            });
+            let manifests = discover_manifests(ecosystem.as_ref(), policy, &opts.repo, &gitignore)
+                .inspect_err(|err| {
                     emit(AuditEvent::EcosystemFailed {
                         kind,
-                        error: core_err.to_string(),
+                        error: err.to_string(),
                     });
-                    return Err(core_err);
+                })?;
+            emit(AuditEvent::EcosystemPhase {
+                kind,
+                phase: AuditPhase::Extract,
+            });
+            let mut extracted = Vec::new();
+            for manifest in &manifests {
+                for mut finding in ecosystem
+                    .extract(manifest, &ctx)
+                    .inspect_err(|e| {
+                        emit(AuditEvent::EcosystemFailed {
+                            kind,
+                            error: e.to_string(),
+                        });
+                    })
+                    .map_err(CoreError::from)?
+                {
+                    finding.path = repo_relative(&opts.repo, &finding.path);
+                    extracted.push(finding);
                 }
             }
-        }
-        let floating = extracted
-            .iter()
-            .filter(|f| f.is_floating && !is_allowlisted(f, policy, &opts.repo))
-            .count();
-        emit(AuditEvent::EcosystemFinished {
-            kind,
-            manifests: manifests.len(),
-            floating,
-        });
-        report.findings.extend(
-            extracted.into_iter().filter(|finding| {
-                finding.is_floating && !is_allowlisted(finding, policy, &opts.repo)
-            }),
-        );
-    }
+            let floating_findings: Vec<_> = extracted
+                .into_iter()
+                .filter(|f| f.is_floating && !is_allowlisted(f, policy, &opts.repo))
+                .collect();
+            let floating = floating_findings.len();
+            emit(AuditEvent::EcosystemFinished {
+                kind,
+                manifests: manifests.len(),
+                floating,
+            });
+            Ok(floating_findings)
+        })
+        .collect();
 
+    // Prefer the first error after join so fail-fast still surfaces EcosystemFailed then Err.
+    let mut report = RunReport::default();
+    for item in results {
+        report.findings.extend(item?);
+    }
+    report.findings.sort_by(|a, b| {
+        (a.ecosystem.as_str(), a.path.as_os_str(), a.name.as_str()).cmp(&(
+            b.ecosystem.as_str(),
+            b.path.as_os_str(),
+            b.name.as_str(),
+        ))
+    });
     emit(AuditEvent::AuditFinished {
         findings: report.findings.len(),
     });
