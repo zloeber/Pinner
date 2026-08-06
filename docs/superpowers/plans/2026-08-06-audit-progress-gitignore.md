@@ -310,11 +310,10 @@ impl Ecosystem for StubEco {
     }
     fn rewrite(
         &self,
+        _manifest: &pinner_ecosystem::Manifest,
         _pins: &[pinner_ecosystem::Pin],
-        _manifests: &[pinner_ecosystem::Manifest],
-        _ctx: &pinner_ecosystem::EcosystemCtx<'_>,
-    ) -> Result<Vec<pinner_ecosystem::Rewrite>, pinner_ecosystem::EcosystemError> {
-        Ok(vec![])
+    ) -> Result<Option<pinner_ecosystem::Rewrite>, pinner_ecosystem::EcosystemError> {
+        Ok(None)
     }
 }
 
@@ -725,11 +724,10 @@ impl Ecosystem for MultiStub {
     }
     fn rewrite(
         &self,
+        _: &Manifest,
         _: &[pinner_ecosystem::Pin],
-        _: &[Manifest],
-        _: &pinner_ecosystem::EcosystemCtx<'_>,
-    ) -> Result<Vec<pinner_ecosystem::Rewrite>, pinner_ecosystem::EcosystemError> {
-        Ok(vec![])
+    ) -> Result<Option<pinner_ecosystem::Rewrite>, pinner_ecosystem::EcosystemError> {
+        Ok(None)
     }
 }
 
