@@ -5,6 +5,7 @@ use pinner_ecosystem::{Ecosystem, EcosystemCtx, EvidenceKind, Pin, ResolveMode};
 use serde::Serialize;
 
 use crate::error::CoreError;
+use crate::gitignore::RepoIgnore;
 use crate::lock::LockFile;
 use crate::orchestrate::{
     LOCK_NAME, RunOptions, discover_and_extract, is_allowlisted, lock_to_pins, selected_ecosystems,
@@ -28,6 +29,7 @@ pub fn audit(
     policy: &Policy,
     opts: &RunOptions,
 ) -> Result<RunReport, CoreError> {
+    let gitignore = RepoIgnore::new(&opts.repo);
     let lock_path = opts.repo.join(LOCK_NAME);
     let lock_pins = if lock_path.exists() {
         lock_to_pins(LockFile::read(&lock_path)?)
@@ -45,7 +47,7 @@ pub fn audit(
     let mut report = RunReport::default();
     for ecosystem in selected_ecosystems(ecosystems, policy, opts) {
         let (_manifests, extracted) =
-            discover_and_extract(ecosystem.as_ref(), policy, &opts.repo, &ctx)?;
+            discover_and_extract(ecosystem.as_ref(), policy, &opts.repo, &ctx, &gitignore)?;
         report.findings.extend(
             extracted.into_iter().filter(|finding| {
                 finding.is_floating && !is_allowlisted(finding, policy, &opts.repo)
@@ -93,6 +95,7 @@ fn explain_via_resolve(
     opts: &RunOptions,
     target: &str,
 ) -> Result<ExplainReport, CoreError> {
+    let gitignore = RepoIgnore::new(&opts.repo);
     let lock_path = opts.repo.join(LOCK_NAME);
     let lock_pins = if lock_path.exists() {
         lock_to_pins(LockFile::read(&lock_path)?)
@@ -109,7 +112,7 @@ fn explain_via_resolve(
 
     for ecosystem in selected_ecosystems(ecosystems, policy, opts) {
         let (_manifests, extracted) =
-            discover_and_extract(ecosystem.as_ref(), policy, &opts.repo, &ctx)?;
+            discover_and_extract(ecosystem.as_ref(), policy, &opts.repo, &ctx, &gitignore)?;
         let Some(finding) = extracted
             .iter()
             .find(|finding| matches_target(&finding.name, &finding.path, target))

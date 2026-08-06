@@ -23,6 +23,7 @@ Lookup table for all pattern files in this directory. Check here before starting
 
 | Pattern | Use when |
 |---------|----------|
+| [core-gitignore-discovery.md](core-gitignore-discovery.md) | Wiring `RepoIgnore` into `discover_manifests` / discovery for pin/check/audit/explain |
 | [core-upgrade-orchestration.md](core-upgrade-orchestration.md) | Adding or changing pinner-core `upgrade` / `upgrade_with_filter` orchestration |
 | [docs-upgrade-and-ecosystems.md](docs-upgrade-and-ecosystems.md) | README/guide/skill docs for upgrade + per-provider pages + mise backends |
 | [ecosystem-upgrade-resolve.md](ecosystem-upgrade-resolve.md) | Adding `ResolveMode::Upgrade` resolve branches in an ecosystem crate |

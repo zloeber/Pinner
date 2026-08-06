@@ -27,6 +27,7 @@ Then read this file fully before doing anything else in this session.
 
 **Working:**
 - Multi-ecosystem pin/check/audit CLI with fixtures and local CI (`scripts/ci-local`)
+- `RepoIgnore` in `pinner-core` — recursive `.gitignore` matching via `ignore` crate; applied in `discover_manifests` for pin/upgrade/check/audit/explain
 - `tests/fixtures/mise-complex/` covers multi-backend mise tools (latest + exact + table/`http:` forms); extract/rewrite handle table `version` keys
 - Tag-driven releases (`semantic-release.yml` → `release.yml`) and mdBook docs Pages deploy
 - Workflows use Node 24 action majors (`checkout@v5`, `mise-action@v4`, artifact/pages v5–v7)
