@@ -14,7 +14,7 @@ edges:
     condition: when setting up the dev environment or running the project for the first time
   - target: patterns/INDEX.md
     condition: when starting a task — check the pattern index for a matching pattern file
-last_updated: 2026-08-05
+last_updated: 2026-08-06
 ---
 
 # Session Bootstrap
@@ -34,7 +34,7 @@ Then read this file fully before doing anything else in this session.
 - Workflows use Node 24 action majors (`checkout@v5`, `mise-action@v4`, artifact/pages v5–v7)
 - `pinner upgrade` shipped: core orchestration + CLI/walkthrough/`upgrade_pin`, all ecosystem `ResolveMode::Upgrade` paths (map → tool/registry), README matrix + mise `github:`/`cargo:` backends + 13 ecosystem guide pages + skill
 - Upgrade patterns: `ecosystem-upgrade-resolve.md`, `core-upgrade-orchestration.md`, `docs-upgrade-and-ecosystems.md`
-- Progress/gitignore patterns: `core-audit-progress.md`, `core-gitignore-discovery.md`
+- Live audit progress (stderr TTY) + recursive gitignore discovery; pattern: `audit-progress-gitignore.md` (details: `core-audit-progress.md`, `core-gitignore-discovery.md`)
 
 **Not yet built:**
 - Broader `.mex/` pattern library beyond upgrade/release/progress patterns (index still sparse outside those areas)
