@@ -48,10 +48,8 @@ fn complex_extracts_all_tools_including_backends() {
 #[test]
 fn complex_marks_latest_and_partial_versions_floating() {
     let findings = findings();
-    let by_name: std::collections::HashMap<_, _> = findings
-        .iter()
-        .map(|f| (f.name.as_str(), f))
-        .collect();
+    let by_name: std::collections::HashMap<_, _> =
+        findings.iter().map(|f| (f.name.as_str(), f)).collect();
 
     for name in [
         "task",
@@ -61,7 +59,9 @@ fn complex_marks_latest_and_partial_versions_floating() {
         "glab",
         "awscli",
     ] {
-        let f = by_name.get(name).unwrap_or_else(|| panic!("missing {name}"));
+        let f = by_name
+            .get(name)
+            .unwrap_or_else(|| panic!("missing {name}"));
         assert_eq!(f.requested, "latest", "{name}");
         assert!(f.is_floating, "{name} should be floating");
     }
@@ -78,10 +78,8 @@ fn complex_marks_latest_and_partial_versions_floating() {
 #[test]
 fn complex_marks_exact_semver_tools_not_floating() {
     let findings = findings();
-    let by_name: std::collections::HashMap<_, _> = findings
-        .iter()
-        .map(|f| (f.name.as_str(), f))
-        .collect();
+    let by_name: std::collections::HashMap<_, _> =
+        findings.iter().map(|f| (f.name.as_str(), f)).collect();
 
     for (name, requested) in [
         ("yamllint", "1.38.0"),
@@ -92,7 +90,9 @@ fn complex_marks_exact_semver_tools_not_floating() {
         ("pipx:copier", "9.16.0"),
         ("http:gkg", "0.24.0"),
     ] {
-        let f = by_name.get(name).unwrap_or_else(|| panic!("missing {name}"));
+        let f = by_name
+            .get(name)
+            .unwrap_or_else(|| panic!("missing {name}"));
         assert_eq!(f.requested, requested, "{name}");
         assert!(!f.is_floating, "{name} should be exact");
     }
