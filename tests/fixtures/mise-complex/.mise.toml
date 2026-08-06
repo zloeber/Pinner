@@ -1,0 +1,71 @@
+[env]
+_.source = '.envrc'
+
+[settings]
+python.uv_venv_auto = "source"
+# Lockfile ON: with mise.lock present, mise resolves tools from the lockfile's stored
+# versions + DOWNLOAD URLS instead of querying each backend's API. That is what keeps
+# the operator-image build off the GitHub API — see the header note in mise.lock and
+# docker/operator/Dockerfile. Regenerate with `task mise:lock` after changing [tools].
+lockfile = true
+
+[tools]
+python = "3.14"
+task = 'latest'
+uv = "latest"
+fzf = "latest"
+yq = "latest"
+jq = 'latest'
+yamllint = "1.38.0"
+ruff = "0.16.0"
+shellcheck = "latest"
+gitleaks = "latest"
+terraform = "latest"
+steampipe = "latest"
+powerpipe = "latest"
+tailpipe = "latest"
+bun = "latest"
+checkov = "latest"
+sops = "latest"
+"npm:skills" = "latest"
+# qmd — local hybrid search index over knowledge/** (task knowledge:query). Pinned: the
+# CLI surface (collection/query/embed) is consumed by scripts/knowledge/qmd_query.py.
+"npm:@tobilu/qmd" = "2.5.3"
+tirith = "latest"
+node = "22"
+npm = "latest"
+
+# ── Tools the task verbs invoke (declared 2026-08) ────────────────────────────
+# These were MISSING from this file while real verbs depended on them. They
+# resolved anyway on maintainer workstations — from the *personal* global mise
+# config (~/.config/mise/config.toml) — which hid the gap: a fresh clone on a
+# clean host could not run `task lint`, `task tfsec`, or any `aws:*` verb.
+# Declared here so the umbrella is self-sufficient. Callers:
+#   glab   → scripts/gitlab/*, scripts/agent/wrap.sh, scripts/claim/claim.py,
+#            tasks/Taskfile.knowledge.yml (MR ops) + the runtime <user_id>
+#            lookup in the branch-naming rail (AGENTS.md §1.6)
+#   tflint → MANDATORY pre-push Terraform gate (`task lint`); its
+#            terraform_unused_declarations rule is what `terraform validate`
+#            cannot substitute for
+#   tfsec  → MANDATORY pre-push Terraform gate (`task tfsec`)
+#   awscli → tasks/Taskfile.aws.yml (8+ verbs), fleet preflight, SSO login
+#   copier → per-account skill/file templatization
+# tflint/tfsec are PINNED so the gate verdict is reproducible — an unpinned
+# ruleset can fail an MR on a rule that did not exist when the branch was cut.
+# CI is unaffected: jobs scope their install to $MISE_CI_TOOLS, so these add no
+# install time and no GitHub-API pressure there.
+glab = "latest"
+tflint = "0.63.1"
+tfsec = "1.28.14"
+awscli = { version = "latest", symlink_bins = "true" }
+"pipx:copier" = "9.16.0"
+"github:zloeber/pinner" = "latest"
+
+[tools."http:gkg"]
+version = "0.24.0"
+
+[tools."http:gkg".platforms]
+macos-x64 = { url = "https://gitlab.com/gitlab-org/rust/knowledge-graph/-/releases/v0.24.0/downloads/gkg-darwin-x86_64.tar.gz" }
+macos-arm64 = { url = "https://gitlab.com/gitlab-org/rust/knowledge-graph/-/releases/v0.24.0/downloads/gkg-darwin-aarch64.tar.gz" }
+linux-x64 = { url = "https://gitlab.com/gitlab-org/rust/knowledge-graph/-/releases/v0.24.0/downloads/gkg-linux-x86_64.tar.gz" }
+windows-x64 = { url = "https://gitlab.com/gitlab-org/rust/knowledge-graph/-/releases/v0.24.0/downloads/gkg-windows-x86_64.tar.gz" }

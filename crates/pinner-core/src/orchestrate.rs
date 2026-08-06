@@ -9,6 +9,7 @@ use pinner_ecosystem::{
 };
 
 use crate::error::CoreError;
+use crate::gitignore::RepoIgnore;
 use crate::lock::{LockEntry, LockFile};
 use crate::policy::{AllowFloating, Policy};
 use crate::report::{DriftItem, RunReport};
@@ -82,6 +83,7 @@ fn run_resolve_rewrite(
     mut walkthrough: Option<&mut WalkthroughFilter<'_>>,
     resolve_mode: ResolveMode,
 ) -> Result<RunReport, CoreError> {
+    let gitignore = RepoIgnore::new(&opts.repo);
     let lock_path = opts.repo.join(LOCK_NAME);
     let prior_lock = if lock_path.exists() {
         lock_to_pins(LockFile::read(&lock_path)?)
@@ -110,7 +112,7 @@ fn run_resolve_rewrite(
 
         for ecosystem in &selected {
             let (manifests, all_findings) =
-                discover_and_extract(ecosystem.as_ref(), policy, &opts.repo, &ctx)?;
+                discover_and_extract(ecosystem.as_ref(), policy, &opts.repo, &ctx, &gitignore)?;
 
             let candidates: Vec<_> = match resolve_mode {
                 ResolveMode::Pin => all_findings
@@ -237,6 +239,7 @@ pub fn check(
     policy: &Policy,
     opts: &RunOptions,
 ) -> Result<RunReport, CoreError> {
+    let gitignore = RepoIgnore::new(&opts.repo);
     let lock_path = opts.repo.join(LOCK_NAME);
     if !lock_path.exists() {
         return Err(CoreError::MissingLock);
@@ -257,7 +260,7 @@ pub fn check(
 
     for ecosystem in selected_ecosystems(ecosystems, policy, opts) {
         let (_manifests, extracted) =
-            discover_and_extract(ecosystem.as_ref(), policy, &opts.repo, &ctx)?;
+            discover_and_extract(ecosystem.as_ref(), policy, &opts.repo, &ctx, &gitignore)?;
 
         for pin in lock_pins
             .iter()
@@ -313,13 +316,14 @@ pub(crate) fn discover_manifests(
     ecosystem: &dyn Ecosystem,
     policy: &Policy,
     repo: &Path,
+    gitignore: &RepoIgnore,
 ) -> Result<Vec<Manifest>, CoreError> {
     Ok(ecosystem
         .discover(repo)?
         .into_iter()
         .filter(|manifest| {
             let path = repo_relative(repo, &manifest.path);
-            !policy.is_ignored(&path)
+            !policy.is_ignored(&path) && !gitignore.is_ignored(&path)
         })
         .collect())
 }
@@ -340,8 +344,9 @@ pub(crate) fn discover_and_extract(
     policy: &Policy,
     repo: &Path,
     ctx: &EcosystemCtx<'_>,
+    gitignore: &RepoIgnore,
 ) -> Result<(Vec<Manifest>, Vec<Finding>), CoreError> {
-    let manifests = discover_manifests(ecosystem, policy, repo)?;
+    let manifests = discover_manifests(ecosystem, policy, repo, gitignore)?;
     let mut findings = Vec::new();
     for manifest in &manifests {
         for mut finding in ecosystem.extract(manifest, ctx)? {

@@ -14,7 +14,7 @@ edges:
     condition: when setting up the dev environment or running the project for the first time
   - target: patterns/INDEX.md
     condition: when starting a task — check the pattern index for a matching pattern file
-last_updated: 2026-08-05
+last_updated: 2026-08-06
 ---
 
 # Session Bootstrap
@@ -27,13 +27,17 @@ Then read this file fully before doing anything else in this session.
 
 **Working:**
 - Multi-ecosystem pin/check/audit CLI with fixtures and local CI (`scripts/ci-local`)
+- `RepoIgnore` in `pinner-core` — recursive `.gitignore` matching via `ignore` crate; applied in `discover_manifests` for pin/upgrade/check/audit/explain
+- Parallel `audit(..., Option<&dyn AuditProgress>)` via rayon `par_iter`; progress emits serialized with `Mutex<()>`; findings sorted by `(ecosystem, path, name)`; CLI attaches `pinner-ui::StderrAuditProgress` when text format + interactive stderr TTY + not `--agent`
+- `tests/fixtures/mise-complex/` covers multi-backend mise tools (latest + exact + table/`http:` forms); extract/rewrite handle table `version` keys
 - Tag-driven releases (`semantic-release.yml` → `release.yml`) and mdBook docs Pages deploy
 - Workflows use Node 24 action majors (`checkout@v5`, `mise-action@v4`, artifact/pages v5–v7)
 - `pinner upgrade` shipped: core orchestration + CLI/walkthrough/`upgrade_pin`, all ecosystem `ResolveMode::Upgrade` paths (map → tool/registry), README matrix + mise `github:`/`cargo:` backends + 13 ecosystem guide pages + skill
 - Upgrade patterns: `ecosystem-upgrade-resolve.md`, `core-upgrade-orchestration.md`, `docs-upgrade-and-ecosystems.md`
+- Live audit progress (stderr TTY) + recursive gitignore discovery; pattern: `audit-progress-gitignore.md` (details: `core-audit-progress.md`, `core-gitignore-discovery.md`)
 
 **Not yet built:**
-- Broader `.mex/` pattern library beyond upgrade/release patterns (index still sparse outside those areas)
+- Broader `.mex/` pattern library beyond upgrade/release/progress patterns (index still sparse outside those areas)
 
 **Known issues:**
 - Semantic-release tag push requires a valid classic `PAT_TOKEN` (repo secret); expired/wrong-scope PATs fail at push, not checkout

@@ -39,10 +39,33 @@ fn rewrite_mise_toml(path: &Path, pins: &[Pin]) -> Result<String, EcosystemError
         })?;
 
     for pin in pins {
-        doc["tools"][&pin.name] = value(pin.pinned.as_str());
+        set_tool_version(&mut doc, &pin.name, &pin.pinned);
     }
 
     Ok(doc.to_string())
+}
+
+/// Prefer updating `version` inside inline/full tables so backends like
+/// `awscli = { version = "...", symlink_bins = "true" }` and
+/// `[tools."http:gkg"]` keep their non-version keys.
+fn set_tool_version(doc: &mut DocumentMut, name: &str, pinned: &str) {
+    let Some(tools) = doc.get_mut("tools") else {
+        doc["tools"][name] = value(pinned);
+        return;
+    };
+
+    if let Some(item) = tools.get_mut(name) {
+        if let Some(inline) = item.as_inline_table_mut() {
+            inline["version"] = value(pinned).into_value().expect("string value");
+            return;
+        }
+        if let Some(table) = item.as_table_mut() {
+            table["version"] = value(pinned);
+            return;
+        }
+    }
+
+    tools[name] = value(pinned);
 }
 
 fn rewrite_tool_versions(path: &Path, pins: &[Pin]) -> Result<String, EcosystemError> {

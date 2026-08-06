@@ -49,7 +49,13 @@ fn run(cli: Cli) -> CliResult<ExitCode> {
                 emit_report(&report, format)?;
                 Ok(ExitCode::SUCCESS)
             } else {
-                let report = audit(&ecosystems, &policy, &opts)?;
+                let use_progress = matches!(format, Format::Text) && !cli.agent && stderr_is_tty();
+                let report = if use_progress {
+                    let sink = pinner_ui::StderrAuditProgress::new(true);
+                    audit(&ecosystems, &policy, &opts, Some(&sink))?
+                } else {
+                    audit(&ecosystems, &policy, &opts, None)?
+                };
                 emit_audit(&report, format)?;
                 if report.findings.is_empty() {
                     Ok(ExitCode::SUCCESS)
@@ -152,6 +158,10 @@ fn effective_format(cli: &Cli) -> Format {
 
 fn stdout_is_tty() -> bool {
     io::stdout().is_terminal()
+}
+
+fn stderr_is_tty() -> bool {
+    io::stderr().is_terminal()
 }
 
 fn prepare(cli: &Cli) -> CliResult<Prepared> {

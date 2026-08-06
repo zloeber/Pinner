@@ -23,6 +23,9 @@ Lookup table for all pattern files in this directory. Check here before starting
 
 | Pattern | Use when |
 |---------|----------|
+| [audit-progress-gitignore.md](audit-progress-gitignore.md) | Live audit progress on stderr, parallel audit, recursive `.gitignore` on discover (canonical overview) |
+| [core-audit-progress.md](core-audit-progress.md) | Detailed `AuditProgress` / `AuditEvent` emission, rayon parallel audit, or stable finding order |
+| [core-gitignore-discovery.md](core-gitignore-discovery.md) | Detailed `RepoIgnore` wiring in `discover_manifests` for pin/check/audit/explain |
 | [core-upgrade-orchestration.md](core-upgrade-orchestration.md) | Adding or changing pinner-core `upgrade` / `upgrade_with_filter` orchestration |
 | [docs-upgrade-and-ecosystems.md](docs-upgrade-and-ecosystems.md) | README/guide/skill docs for upgrade + per-provider pages + mise backends |
 | [ecosystem-upgrade-resolve.md](ecosystem-upgrade-resolve.md) | Adding `ResolveMode::Upgrade` resolve branches in an ecosystem crate |

@@ -346,6 +346,59 @@ fn rewrite_mise_toml_sets_exact_version() {
 }
 
 #[test]
+fn rewrite_preserves_inline_table_and_http_backend() {
+    let dir = tempdir().unwrap();
+    let path = dir.path().join(".mise.toml");
+    std::fs::write(
+        &path,
+        r#"[tools]
+awscli = { version = "latest", symlink_bins = "true" }
+
+[tools."http:gkg"]
+version = "0.24.0"
+
+[tools."http:gkg".platforms]
+macos-arm64 = { url = "https://example.com/gkg.tgz" }
+"#,
+    )
+    .unwrap();
+    let manifest = Manifest {
+        ecosystem: EcosystemKind::Mise,
+        path: path.clone(),
+    };
+    let pins = vec![
+        Pin {
+            ecosystem: EcosystemKind::Mise,
+            name: "awscli".into(),
+            requested: "latest".into(),
+            pinned: "2.15.0".into(),
+            path: path.clone(),
+            evidence: EvidenceKind::Tool,
+            metadata: Default::default(),
+        },
+        Pin {
+            ecosystem: EcosystemKind::Mise,
+            name: "http:gkg".into(),
+            requested: "0.24.0".into(),
+            pinned: "0.25.0".into(),
+            path: path.clone(),
+            evidence: EvidenceKind::Tool,
+            metadata: Default::default(),
+        },
+    ];
+    let rw = MiseEcosystem::default()
+        .rewrite(&manifest, &pins)
+        .unwrap()
+        .unwrap();
+    assert!(rw.new_contents.contains("2.15.0"));
+    assert!(rw.new_contents.contains("symlink_bins"));
+    assert!(rw.new_contents.contains("0.25.0"));
+    assert!(rw.new_contents.contains("platforms"));
+    assert!(rw.new_contents.contains("https://example.com/gkg.tgz"));
+    assert!(!rw.new_contents.contains("latest"));
+}
+
+#[test]
 fn rewrite_tool_versions_replaces_line() {
     let dir = tempdir().unwrap();
     let path = dir.path().join(".tool-versions");

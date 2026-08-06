@@ -1,15 +1,21 @@
 use std::path::{Path, PathBuf};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
-use pinner_ecosystem::{Ecosystem, EcosystemCtx, EvidenceKind, Pin, ResolveMode};
+use pinner_ecosystem::{
+    Ecosystem, EcosystemCtx, EvidenceKind, Finding, Pin, ResolveMode, repo_relative,
+};
+use rayon::prelude::*;
 use serde::Serialize;
 
 use crate::error::CoreError;
+use crate::gitignore::RepoIgnore;
 use crate::lock::LockFile;
 use crate::orchestrate::{
-    LOCK_NAME, RunOptions, discover_and_extract, is_allowlisted, lock_to_pins, selected_ecosystems,
+    LOCK_NAME, RunOptions, discover_and_extract, discover_manifests, is_allowlisted, lock_to_pins,
+    selected_ecosystems,
 };
 use crate::policy::Policy;
+use crate::progress::{AuditEvent, AuditPhase, AuditProgress};
 use crate::report::RunReport;
 
 #[derive(Debug, Clone, Serialize)]
@@ -27,7 +33,16 @@ pub fn audit(
     ecosystems: &[Arc<dyn Ecosystem>],
     policy: &Policy,
     opts: &RunOptions,
+    progress: Option<&dyn AuditProgress>,
 ) -> Result<RunReport, CoreError> {
+    let emit_lock = Mutex::new(());
+    let emit = |event: AuditEvent| {
+        if let Some(p) = progress {
+            let _g = emit_lock.lock().unwrap();
+            p.on_event(event);
+        }
+    };
+
     let lock_path = opts.repo.join(LOCK_NAME);
     let lock_pins = if lock_path.exists() {
         lock_to_pins(LockFile::read(&lock_path)?)
@@ -41,17 +56,76 @@ pub fn audit(
         pin_exact_ranges: policy.pin_exact_ranges,
         resolve_mode: ResolveMode::Pin,
     };
+    let gitignore = RepoIgnore::new(&opts.repo);
 
+    let selected: Vec<_> = selected_ecosystems(ecosystems, policy, opts).collect();
+    emit(AuditEvent::AuditStarted {
+        ecosystems: selected.iter().map(|e| e.kind()).collect(),
+    });
+
+    let results: Vec<Result<Vec<Finding>, CoreError>> = selected
+        .par_iter()
+        .map(|ecosystem| {
+            let kind = ecosystem.kind();
+            emit(AuditEvent::EcosystemStarted { kind });
+            emit(AuditEvent::EcosystemPhase {
+                kind,
+                phase: AuditPhase::Discover,
+            });
+            let manifests = discover_manifests(ecosystem.as_ref(), policy, &opts.repo, &gitignore)
+                .inspect_err(|err| {
+                    emit(AuditEvent::EcosystemFailed {
+                        kind,
+                        error: err.to_string(),
+                    });
+                })?;
+            emit(AuditEvent::EcosystemPhase {
+                kind,
+                phase: AuditPhase::Extract,
+            });
+            let mut extracted = Vec::new();
+            for manifest in &manifests {
+                for mut finding in ecosystem.extract(manifest, &ctx).map_err(|e| {
+                    let err = CoreError::from(e);
+                    emit(AuditEvent::EcosystemFailed {
+                        kind,
+                        error: err.to_string(),
+                    });
+                    err
+                })? {
+                    finding.path = repo_relative(&opts.repo, &finding.path);
+                    extracted.push(finding);
+                }
+            }
+            let floating_findings: Vec<_> = extracted
+                .into_iter()
+                .filter(|f| f.is_floating && !is_allowlisted(f, policy, &opts.repo))
+                .collect();
+            let floating = floating_findings.len();
+            emit(AuditEvent::EcosystemFinished {
+                kind,
+                manifests: manifests.len(),
+                floating,
+            });
+            Ok(floating_findings)
+        })
+        .collect();
+
+    // Prefer the first error after join so fail-fast still surfaces EcosystemFailed then Err.
     let mut report = RunReport::default();
-    for ecosystem in selected_ecosystems(ecosystems, policy, opts) {
-        let (_manifests, extracted) =
-            discover_and_extract(ecosystem.as_ref(), policy, &opts.repo, &ctx)?;
-        report.findings.extend(
-            extracted.into_iter().filter(|finding| {
-                finding.is_floating && !is_allowlisted(finding, policy, &opts.repo)
-            }),
-        );
+    for item in results {
+        report.findings.extend(item?);
     }
+    report.findings.sort_by(|a, b| {
+        (a.ecosystem.as_str(), a.path.as_os_str(), a.name.as_str()).cmp(&(
+            b.ecosystem.as_str(),
+            b.path.as_os_str(),
+            b.name.as_str(),
+        ))
+    });
+    emit(AuditEvent::AuditFinished {
+        findings: report.findings.len(),
+    });
     Ok(report)
 }
 
@@ -93,6 +167,7 @@ fn explain_via_resolve(
     opts: &RunOptions,
     target: &str,
 ) -> Result<ExplainReport, CoreError> {
+    let gitignore = RepoIgnore::new(&opts.repo);
     let lock_path = opts.repo.join(LOCK_NAME);
     let lock_pins = if lock_path.exists() {
         lock_to_pins(LockFile::read(&lock_path)?)
@@ -109,7 +184,7 @@ fn explain_via_resolve(
 
     for ecosystem in selected_ecosystems(ecosystems, policy, opts) {
         let (_manifests, extracted) =
-            discover_and_extract(ecosystem.as_ref(), policy, &opts.repo, &ctx)?;
+            discover_and_extract(ecosystem.as_ref(), policy, &opts.repo, &ctx, &gitignore)?;
         let Some(finding) = extracted
             .iter()
             .find(|finding| matches_target(&finding.name, &finding.path, target))

@@ -7,6 +7,8 @@ repository.workspace = true
 
 [dependencies]
 globset = { workspace = true }
+ignore = { workspace = true }
+rayon = { workspace = true }
 pinner-ecosystem = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
