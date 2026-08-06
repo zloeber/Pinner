@@ -93,7 +93,6 @@ pub fn audit(
                     });
                     err
                 })? {
-
                     finding.path = repo_relative(&opts.repo, &finding.path);
                     extracted.push(finding);
                 }

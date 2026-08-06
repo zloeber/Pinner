@@ -32,7 +32,9 @@ last_updated: 2026-08-06
 6. Collect `Vec<Result<...>>`, fold first `Err` after join (preserve fail-fast: `EcosystemFailed` then `Err`, no `AuditFinished`).
 7. Sort `report.findings` before `AuditFinished`.
 8. Call sites without a sink: `audit(..., None)`.
-9. Integration tests under `crates/pinner-core/tests/audit_progress.rs` (phases, failure contract, deterministic sort).
+9. UI sink: `pinner-ui::StderrAuditProgress` implements `AuditProgress`; `format_audit_event` for pure formatting/tests; writes to stderr with optional crossterm color.
+10. CLI (`crates/pinner`): attach sink only when `Format::Text && !cli.agent && stderr_is_tty()`; otherwise `None`. Progress must never appear on stdout (JSON/`--agent` stay clean).
+11. Integration tests under `crates/pinner-core/tests/audit_progress.rs` (phases, failure contract, deterministic sort); CLI contract in `crates/pinner/tests/audit_explain.rs` (`audit_json_stdout_is_findings_only`).
 
 ## Gotchas
 
@@ -59,3 +61,4 @@ last_updated: 2026-08-06
 
 - [x] Update `.mex/ROUTER.md` "Current Project State" when parallel audit lands
 - [x] Keep this pattern in sync with rayon + stable ordering
+- [x] CLI attaches `StderrAuditProgress` for interactive text stderr TTY
