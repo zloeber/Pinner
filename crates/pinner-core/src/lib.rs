@@ -1,5 +1,6 @@
 pub mod audit;
 pub mod error;
+pub mod gitignore;
 pub mod lock;
 pub mod orchestrate;
 pub mod policy;
@@ -8,6 +9,7 @@ pub mod walkthrough;
 
 pub use audit::{ExplainReport, audit, explain};
 pub use error::CoreError;
+pub use gitignore::RepoIgnore;
 pub use orchestrate::{
     RunOptions, WalkthroughFilter, check, pin, pin_with_filter, upgrade, upgrade_with_filter,
 };
