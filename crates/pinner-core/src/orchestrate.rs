@@ -131,7 +131,7 @@ fn run_resolve_rewrite(
                     ));
                     continue;
                 }
-                Err(err) => return Err(err.into()),
+                Err(err) => return Err(err),
             };
 
             let candidates: Vec<_> = match resolve_mode {
