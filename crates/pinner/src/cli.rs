@@ -40,7 +40,14 @@ pub enum Commands {
     /// Resolve floating versions and rewrite manifests / lockfile
     Pin,
     /// Re-resolve declared deps to newest versions and rewrite / lock
-    Upgrade,
+    Upgrade {
+        /// Emit a shell script with native upgrade commands instead of rewriting manifests/lock
+        #[arg(long)]
+        script: bool,
+        /// Continue upgrade when an ecosystem fails; emit warning(s) and process the rest
+        #[arg(long)]
+        continue_on_ecosystem_error: bool,
+    },
     /// Report drift against pinner.lock.json without writing
     Check,
     /// Report floating refs (text/JSON); `--fix` applies pin

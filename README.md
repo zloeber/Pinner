@@ -63,6 +63,8 @@ pinner pin
 # Bump exact pins to latest (rewrite + lock)
 pinner upgrade
 pinner upgrade --walkthrough   # interactive accept/skip/edit (TTY)
+pinner upgrade --script        # emit native package-manager upgrade script
+pinner upgrade --continue-on-ecosystem-error  # warn and continue when one ecosystem fails
 
 # Drift gate (no writes) — exit 1 on mismatch, 2 on tool/config errors
 pinner check

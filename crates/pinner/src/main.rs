@@ -1,6 +1,7 @@
 mod cli;
 
 use std::cell::Cell;
+use std::collections::BTreeSet;
 use std::io::{self, IsTerminal, Write};
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
@@ -11,13 +12,29 @@ use pinner_core::{
     ExplainReport, Policy, RunOptions, RunReport, WalkthroughFilter, WalkthroughOutcome, audit,
     check, explain, pin, pin_with_filter, upgrade, upgrade_with_filter,
 };
-use pinner_ecosystem::{Ecosystem, EcosystemKind};
+use pinner_ecosystem::{Ecosystem, EcosystemKind, repo_relative};
 use pinner_toolchain::{ToolStatus, ensure, status};
+use serde_json::json;
 
 use crate::cli::{Cli, Commands, Format, ToolchainCmd};
 
 type Prepared = (Policy, RunOptions, Vec<Arc<dyn Ecosystem>>);
 type CliResult<T> = Result<T, Box<dyn std::error::Error>>;
+
+#[derive(Debug, Clone)]
+struct UpgradeScriptCommand {
+    ecosystem: EcosystemKind,
+    manager: &'static str,
+    manifest: PathBuf,
+    working_dir: PathBuf,
+    command: String,
+}
+
+#[derive(Debug, Clone)]
+struct UpgradeScriptPlan {
+    script: String,
+    commands: Vec<UpgradeScriptCommand>,
+}
 
 fn main() -> ExitCode {
     let cli = Cli::parse();
@@ -81,13 +98,23 @@ fn run(cli: Cli) -> CliResult<ExitCode> {
             emit_report(&report, format)?;
             Ok(ExitCode::SUCCESS)
         }
-        Commands::Upgrade => {
-            let (policy, opts, ecosystems) = prepare(&cli)?;
+        Commands::Upgrade {
+            script,
+            continue_on_ecosystem_error,
+        } => {
+            let (policy, mut opts, ecosystems) = prepare(&cli)?;
+            opts.continue_on_ecosystem_error = *continue_on_ecosystem_error;
+            if *script {
+                let plan = build_upgrade_script(&ecosystems, &policy, &opts)?;
+                emit_upgrade_script(&plan, format)?;
+                return Ok(ExitCode::SUCCESS);
+            }
             let (report, aborted) = run_upgrade(&ecosystems, &policy, &opts, cli.walkthrough)?;
             if aborted {
                 eprintln!("walkthrough aborted; nothing written");
                 return Ok(ExitCode::SUCCESS);
             }
+            emit_ecosystem_warnings(&report);
             emit_report(&report, format)?;
             Ok(ExitCode::SUCCESS)
         }
@@ -172,6 +199,7 @@ fn prepare(cli: &Cli) -> CliResult<Prepared> {
         repo: std::env::current_dir()?,
         dry_run: cli.dry_run,
         offline: cli.offline || policy.offline_default,
+        continue_on_ecosystem_error: false,
         ecosystems_filter,
     };
     Ok((policy, opts, register_ecosystems()))
@@ -379,4 +407,185 @@ fn emit_toolchain(tools: &[ToolStatus], format: Format) -> Result<(), Box<dyn st
         }
     }
     Ok(())
+}
+
+fn emit_ecosystem_warnings(report: &RunReport) {
+    for warning in &report.ecosystem_warnings {
+        eprintln!("warning: {warning}");
+    }
+}
+
+fn build_upgrade_script(
+    ecosystems: &[Arc<dyn Ecosystem>],
+    policy: &Policy,
+    opts: &RunOptions,
+) -> Result<UpgradeScriptPlan, Box<dyn std::error::Error>> {
+    let mut commands = Vec::new();
+    let mut seen = BTreeSet::new();
+
+    for ecosystem in ecosystems {
+        if !policy.is_enabled(ecosystem.kind()) {
+            continue;
+        }
+        if let Some(filter) = &opts.ecosystems_filter
+            && !filter.contains(&ecosystem.kind())
+        {
+            continue;
+        }
+
+        for manifest in ecosystem.discover(&opts.repo)? {
+            let rel_manifest = repo_relative(&opts.repo, &manifest.path);
+            if policy.is_ignored(&rel_manifest) {
+                continue;
+            }
+            if let Some((manager, manifest_cmd)) =
+                upgrade_command_for_manifest(ecosystem.kind(), &rel_manifest, &opts.repo)
+            {
+                let dir = rel_manifest
+                    .parent()
+                    .map(Path::to_path_buf)
+                    .unwrap_or_else(|| PathBuf::from("."));
+                let key = format!(
+                    "{}|{}|{}",
+                    ecosystem.kind().as_str(),
+                    dir.display(),
+                    manifest_cmd
+                );
+                if !seen.insert(key) {
+                    continue;
+                }
+                commands.push(UpgradeScriptCommand {
+                    ecosystem: ecosystem.kind(),
+                    manager,
+                    manifest: rel_manifest,
+                    working_dir: dir,
+                    command: manifest_cmd,
+                });
+            }
+        }
+    }
+
+    commands.sort_by(|a, b| {
+        a.ecosystem
+            .as_str()
+            .cmp(b.ecosystem.as_str())
+            .then_with(|| a.working_dir.cmp(&b.working_dir))
+            .then_with(|| a.command.cmp(&b.command))
+    });
+
+    let script = render_upgrade_script(&commands);
+    Ok(UpgradeScriptPlan { script, commands })
+}
+
+fn upgrade_command_for_manifest(
+    kind: EcosystemKind,
+    rel_manifest: &Path,
+    repo: &Path,
+) -> Option<(&'static str, String)> {
+    let filename = rel_manifest.file_name()?.to_string_lossy();
+    let rel_file = repo_relative(repo, rel_manifest).display().to_string();
+
+    match kind {
+        EcosystemKind::Mise => Some(("mise", "mise upgrade".to_string())),
+        EcosystemKind::Node => Some(("npm", "npm update".to_string())),
+        EcosystemKind::Python => {
+            if filename == "pyproject.toml" {
+                Some(("uv", "uv lock --upgrade".to_string()))
+            } else if filename.starts_with("requirements") && filename.ends_with(".txt") {
+                Some((
+                    "uv",
+                    format!("uv pip compile --upgrade {}", shell_quote(&rel_file)),
+                ))
+            } else {
+                None
+            }
+        }
+        EcosystemKind::Terraform => Some(("terraform", "terraform init -upgrade".to_string())),
+        EcosystemKind::Helm => Some(("helm", "helm dependency update".to_string())),
+        EcosystemKind::Cargo => Some(("cargo", "cargo update".to_string())),
+        EcosystemKind::Go => Some(("go", "go get -u ./... && go mod tidy".to_string())),
+        EcosystemKind::Ruby => Some(("bundler", "bundle update".to_string())),
+        // These are upgraded via resolvers/API lookups, not package-manager CLIs.
+        EcosystemKind::Docker
+        | EcosystemKind::Actions
+        | EcosystemKind::K8s
+        | EcosystemKind::Gitlab
+        | EcosystemKind::Azure => None,
+    }
+}
+
+fn render_upgrade_script(commands: &[UpgradeScriptCommand]) -> String {
+    let mut out = String::new();
+    out.push_str("#!/usr/bin/env bash\n");
+    out.push_str("set -euo pipefail\n\n");
+    out.push_str("# Generated by pinner upgrade --script\n");
+    out.push_str("# Review commands before running in CI or production.\n\n");
+
+    if commands.is_empty() {
+        out.push_str(
+            "echo 'No native package-manager upgrade commands found for selected ecosystems.'\n",
+        );
+        return out;
+    }
+
+    let mut current: Option<EcosystemKind> = None;
+    for cmd in commands {
+        if current != Some(cmd.ecosystem) {
+            if current.is_some() {
+                out.push('\n');
+            }
+            out.push_str("# ");
+            out.push_str(cmd.ecosystem.as_str());
+            out.push_str(" (");
+            out.push_str(cmd.manager);
+            out.push_str(")\n");
+            current = Some(cmd.ecosystem);
+        }
+        out.push_str("# manifest: ");
+        out.push_str(&cmd.manifest.display().to_string());
+        out.push('\n');
+        out.push_str("(cd ");
+        out.push_str(&shell_quote_path(&cmd.working_dir));
+        out.push_str(" && ");
+        out.push_str(&cmd.command);
+        out.push_str(")\n");
+    }
+
+    out
+}
+
+fn emit_upgrade_script(
+    plan: &UpgradeScriptPlan,
+    format: Format,
+) -> Result<(), Box<dyn std::error::Error>> {
+    match format {
+        Format::Json => {
+            let payload = json!({
+                "script": plan.script,
+                "commands": plan.commands.iter().map(|cmd| {
+                    json!({
+                        "ecosystem": cmd.ecosystem.as_str(),
+                        "manager": cmd.manager,
+                        "manifest": cmd.manifest,
+                        "working_dir": cmd.working_dir,
+                        "command": cmd.command,
+                    })
+                }).collect::<Vec<_>>()
+            });
+            println!("{}", serde_json::to_string_pretty(&payload)?);
+        }
+        Format::Text => {
+            print!("{}", plan.script);
+            io::stdout().flush()?;
+        }
+    }
+    Ok(())
+}
+
+fn shell_quote_path(path: &Path) -> String {
+    shell_quote(&path.display().to_string())
+}
+
+fn shell_quote(value: &str) -> String {
+    format!("'{}'", value.replace('\'', "'\"'\"'"))
 }

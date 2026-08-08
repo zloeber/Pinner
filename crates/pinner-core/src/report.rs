@@ -9,6 +9,8 @@ pub struct RunReport {
     pub rewrites: Vec<Rewrite>,
     pub findings: Vec<Finding>,
     pub drift: Vec<DriftItem>,
+    /// Non-fatal ecosystem failures captured when continue-on-ecosystem-error is enabled.
+    pub ecosystem_warnings: Vec<String>,
     /// Count of proposed/accepted upgrades from `upgrade` (includes dry-run; 0 for pin/check/audit).
     pub upgraded: usize,
 }

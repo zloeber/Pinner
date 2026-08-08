@@ -181,6 +181,7 @@ fn options(repo: &Path) -> RunOptions {
         repo: repo.to_path_buf(),
         dry_run: false,
         offline: false,
+        continue_on_ecosystem_error: false,
         ecosystems_filter: None,
     }
 }
@@ -406,6 +407,123 @@ impl Ecosystem for FailNodeEco {
     }
 }
 
+struct UpgradeNodeEco;
+
+impl Ecosystem for UpgradeNodeEco {
+    fn kind(&self) -> EcosystemKind {
+        EcosystemKind::Node
+    }
+
+    fn discover(&self, repo: &Path) -> Result<Vec<Manifest>, EcosystemError> {
+        Ok(vec![Manifest {
+            ecosystem: self.kind(),
+            path: repo.join("package.json"),
+        }])
+    }
+
+    fn extract(
+        &self,
+        manifest: &Manifest,
+        _ctx: &EcosystemCtx<'_>,
+    ) -> Result<Vec<Finding>, EcosystemError> {
+        Ok(vec![Finding {
+            ecosystem: EcosystemKind::Node,
+            name: "left-pad".into(),
+            requested: "1.0.0".into(),
+            path: manifest.path.clone(),
+            is_floating: false,
+        }])
+    }
+
+    fn resolve(
+        &self,
+        findings: &[Finding],
+        _ctx: &EcosystemCtx<'_>,
+    ) -> Result<Vec<Pin>, EcosystemError> {
+        Ok(findings
+            .iter()
+            .map(|f| {
+                let mut metadata = Map::new();
+                metadata.insert("upgrade".into(), Value::Bool(true));
+                metadata.insert("previous".into(), Value::String("1.0.0".into()));
+                Pin {
+                    ecosystem: f.ecosystem,
+                    name: f.name.clone(),
+                    requested: f.requested.clone(),
+                    pinned: "1.3.0".into(),
+                    path: f.path.clone(),
+                    evidence: EvidenceKind::Tool,
+                    metadata,
+                }
+            })
+            .collect())
+    }
+
+    fn rewrite(
+        &self,
+        manifest: &Manifest,
+        pins: &[Pin],
+    ) -> Result<Option<Rewrite>, EcosystemError> {
+        let pin = &pins[0];
+        Ok(Some(Rewrite {
+            path: manifest.path.clone(),
+            new_contents: format!(
+                "{{\n  \"dependencies\": {{\n    \"{}\": \"{}\"\n  }}\n}}\n",
+                pin.name, pin.pinned
+            ),
+        }))
+    }
+}
+
+struct FailMiseEco;
+
+impl Ecosystem for FailMiseEco {
+    fn kind(&self) -> EcosystemKind {
+        EcosystemKind::Mise
+    }
+
+    fn discover(&self, repo: &Path) -> Result<Vec<Manifest>, EcosystemError> {
+        Ok(vec![Manifest {
+            ecosystem: self.kind(),
+            path: repo.join(".mise.toml"),
+        }])
+    }
+
+    fn extract(
+        &self,
+        manifest: &Manifest,
+        _ctx: &EcosystemCtx<'_>,
+    ) -> Result<Vec<Finding>, EcosystemError> {
+        Ok(vec![Finding {
+            ecosystem: EcosystemKind::Mise,
+            name: "node".into(),
+            requested: "22".into(),
+            path: manifest.path.clone(),
+            is_floating: false,
+        }])
+    }
+
+    fn resolve(
+        &self,
+        _findings: &[Finding],
+        _ctx: &EcosystemCtx<'_>,
+    ) -> Result<Vec<Pin>, EcosystemError> {
+        Err(EcosystemError::Resolve {
+            name: "node".into(),
+            requested: "22".into(),
+            hint: "intentional mise failure for continue-on-error test".into(),
+        })
+    }
+
+    fn rewrite(
+        &self,
+        _manifest: &Manifest,
+        _pins: &[Pin],
+    ) -> Result<Option<Rewrite>, EcosystemError> {
+        unreachable!("rewrite must not run when resolve fails")
+    }
+}
+
 #[test]
 fn pin_writes_nothing_when_later_ecosystem_resolve_fails() {
     let dir = tempdir().unwrap();
@@ -436,6 +554,45 @@ fn pin_writes_nothing_when_later_ecosystem_resolve_fails() {
     assert!(
         !dir.path().join("pinner.lock.json").exists(),
         "lock must not be written on resolve failure"
+    );
+}
+
+#[test]
+fn upgrade_can_continue_when_one_ecosystem_fails() {
+    let dir = tempdir().unwrap();
+    std::fs::write(dir.path().join(".mise.toml"), "[tools]\nnode = \"22\"\n").unwrap();
+    std::fs::write(
+        dir.path().join("package.json"),
+        "{\n  \"dependencies\": {\n    \"left-pad\": \"1.0.0\"\n  }\n}\n",
+    )
+    .unwrap();
+
+    let mise: Arc<dyn Ecosystem> = Arc::new(FailMiseEco);
+    let node: Arc<dyn Ecosystem> = Arc::new(UpgradeNodeEco);
+    let ecosystems = [mise, node];
+    let mut opts = options(dir.path());
+    opts.continue_on_ecosystem_error = true;
+
+    let report = upgrade(&ecosystems, &Policy::default_policy(), &opts).unwrap();
+
+    assert!(report.upgraded >= 1);
+    assert!(!report.rewrites.is_empty());
+    assert_eq!(
+        report.ecosystem_warnings.len(),
+        1,
+        "expected a warning for failing mise ecosystem"
+    );
+    assert!(report.ecosystem_warnings[0].contains("mise resolve failed"));
+
+    let pkg = std::fs::read_to_string(dir.path().join("package.json")).unwrap();
+    assert!(pkg.contains("1.3.0"));
+
+    let lock = LockFile::read(&dir.path().join("pinner.lock.json")).unwrap();
+    assert!(
+        lock.entries
+            .iter()
+            .any(|entry| entry.ecosystem == EcosystemKind::Node),
+        "node lock entry should be present"
     );
 }
 

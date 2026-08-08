@@ -21,6 +21,7 @@ pub struct RunOptions {
     pub repo: PathBuf,
     pub dry_run: bool,
     pub offline: bool,
+    pub continue_on_ecosystem_error: bool,
     pub ecosystems_filter: Option<Vec<EcosystemKind>>,
 }
 
@@ -92,7 +93,8 @@ fn run_resolve_rewrite(
     };
 
     let selected: Vec<_> = selected_ecosystems(ecosystems, policy, opts).collect();
-    let selected_kinds: Vec<EcosystemKind> = selected.iter().map(|e| e.kind()).collect();
+    let mut processed_kinds: Vec<EcosystemKind> = Vec::new();
+    let mut ecosystem_warnings: Vec<String> = Vec::new();
 
     // Phase 1: discover/extract/resolve for every selected ecosystem. On any resolve
     // failure, write nothing. Rewrites are staged only after an optional walkthrough.
@@ -111,8 +113,26 @@ fn run_resolve_rewrite(
         };
 
         for ecosystem in &selected {
-            let (manifests, all_findings) =
-                discover_and_extract(ecosystem.as_ref(), policy, &opts.repo, &ctx, &gitignore)?;
+            let (manifests, all_findings) = match discover_and_extract(
+                ecosystem.as_ref(),
+                policy,
+                &opts.repo,
+                &ctx,
+                &gitignore,
+            ) {
+                Ok(result) => result,
+                Err(err)
+                    if resolve_mode == ResolveMode::Upgrade && opts.continue_on_ecosystem_error =>
+                {
+                    ecosystem_warnings.push(format!(
+                        "{} discover/extract failed: {}",
+                        ecosystem.kind().as_str(),
+                        err
+                    ));
+                    continue;
+                }
+                Err(err) => return Err(err.into()),
+            };
 
             let candidates: Vec<_> = match resolve_mode {
                 ResolveMode::Pin => all_findings
@@ -126,11 +146,25 @@ fn run_resolve_rewrite(
                 ResolveMode::Upgrade => all_findings.clone(),
             };
 
-            let mut resolved = ecosystem.resolve(&candidates, &ctx)?;
+            let mut resolved = match ecosystem.resolve(&candidates, &ctx) {
+                Ok(resolved) => resolved,
+                Err(err)
+                    if resolve_mode == ResolveMode::Upgrade && opts.continue_on_ecosystem_error =>
+                {
+                    ecosystem_warnings.push(format!(
+                        "{} resolve failed: {}",
+                        ecosystem.kind().as_str(),
+                        err
+                    ));
+                    continue;
+                }
+                Err(err) => return Err(err.into()),
+            };
             if resolve_mode == ResolveMode::Upgrade {
                 resolved.retain(|pin| !is_unchanged_upgrade(pin));
             }
             all_resolved.extend(resolved.iter().cloned());
+            processed_kinds.push(ecosystem.kind());
             batches.push(ResolvedBatch {
                 ecosystem: Arc::clone(ecosystem),
                 manifests,
@@ -164,6 +198,7 @@ fn run_resolve_rewrite(
         for batch in &batches {
             report.findings.extend(batch.candidates.iter().cloned());
         }
+        report.ecosystem_warnings = ecosystem_warnings;
         return Ok(report);
     }
 
@@ -205,10 +240,11 @@ fn run_resolve_rewrite(
     // selected-ecosystem graph pins and dedupe by (ecosystem, path, name).
     let mut combined: Vec<Pin> = prior_lock
         .into_iter()
-        .filter(|pin| !selected_kinds.contains(&pin.ecosystem))
+        .filter(|pin| !processed_kinds.contains(&pin.ecosystem))
         .collect();
     combined.extend(graph_pins);
     report.pins = dedupe_pins(combined);
+    report.ecosystem_warnings = ecosystem_warnings;
 
     // Phase 2: only after all resolves (and optional walkthrough) succeed, write.
     if !opts.dry_run {

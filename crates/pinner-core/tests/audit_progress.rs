@@ -74,6 +74,7 @@ fn audit_emits_phase_events() {
         repo: dir.path().to_path_buf(),
         dry_run: true,
         offline: true,
+        continue_on_ecosystem_error: false,
         ecosystems_filter: Some(vec![EcosystemKind::Mise]),
     };
     let report = audit(&ecosystems, &policy, &opts, Some(&sink)).unwrap();
@@ -164,6 +165,7 @@ fn audit_emits_ecosystem_failed_without_finished() {
         repo: dir.path().to_path_buf(),
         dry_run: true,
         offline: true,
+        continue_on_ecosystem_error: false,
         ecosystems_filter: Some(vec![EcosystemKind::Mise]),
     };
     let result = audit(&ecosystems, &policy, &opts, Some(&sink));
@@ -252,6 +254,7 @@ fn audit_findings_are_sorted_deterministically() {
         repo: dir.path().to_path_buf(),
         dry_run: true,
         offline: true,
+        continue_on_ecosystem_error: false,
         ecosystems_filter: Some(vec![EcosystemKind::Mise, EcosystemKind::Node]),
     };
     let report = audit(&ecosystems, &policy, &opts, None).unwrap();

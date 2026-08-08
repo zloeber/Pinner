@@ -149,6 +149,7 @@ fn options(repo: &Path) -> RunOptions {
         repo: repo.to_path_buf(),
         dry_run: false,
         offline: false,
+        continue_on_ecosystem_error: false,
         ecosystems_filter: None,
     }
 }
