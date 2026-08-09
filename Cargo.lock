@@ -1480,7 +1480,7 @@ checksum = "a89322df9ebe1c1578d689c92318e070967d1042b512afbe49518723f4e6d5cd"
 
 [[package]]
 name = "pinner"
-version = "0.5.0"
+version = "0.5.1"
 dependencies = [
  "assert_cmd",
  "clap",
@@ -1509,7 +1509,7 @@ dependencies = [
 
 [[package]]
 name = "pinner-actions"
-version = "0.5.0"
+version = "0.5.1"
 dependencies = [
  "pinner-ecosystem",
  "pinner-iac-common",
@@ -1522,7 +1522,7 @@ dependencies = [
 
 [[package]]
 name = "pinner-azure"
-version = "0.5.0"
+version = "0.5.1"
 dependencies = [
  "pinner-ecosystem",
  "pinner-iac-common",
@@ -1536,7 +1536,7 @@ dependencies = [
 
 [[package]]
 name = "pinner-cargo"
-version = "0.5.0"
+version = "0.5.1"
 dependencies = [
  "pinner-ecosystem",
  "pinner-iac-common",
@@ -1550,7 +1550,7 @@ dependencies = [
 
 [[package]]
 name = "pinner-core"
-version = "0.5.0"
+version = "0.5.1"
 dependencies = [
  "globset",
  "ignore",
@@ -1565,7 +1565,7 @@ dependencies = [
 
 [[package]]
 name = "pinner-docker"
-version = "0.5.0"
+version = "0.5.1"
 dependencies = [
  "pinner-ecosystem",
  "pinner-toolchain",
@@ -1577,7 +1577,7 @@ dependencies = [
 
 [[package]]
 name = "pinner-ecosystem"
-version = "0.5.0"
+version = "0.5.1"
 dependencies = [
  "serde",
  "serde_json",
@@ -1586,7 +1586,7 @@ dependencies = [
 
 [[package]]
 name = "pinner-gitlab"
-version = "0.5.0"
+version = "0.5.1"
 dependencies = [
  "pinner-ecosystem",
  "pinner-iac-common",
@@ -1600,7 +1600,7 @@ dependencies = [
 
 [[package]]
 name = "pinner-go"
-version = "0.5.0"
+version = "0.5.1"
 dependencies = [
  "pinner-ecosystem",
  "pinner-iac-common",
@@ -1612,7 +1612,7 @@ dependencies = [
 
 [[package]]
 name = "pinner-helm"
-version = "0.5.0"
+version = "0.5.1"
 dependencies = [
  "pinner-ecosystem",
  "pinner-iac-common",
@@ -1626,14 +1626,14 @@ dependencies = [
 
 [[package]]
 name = "pinner-iac-common"
-version = "0.5.0"
+version = "0.5.1"
 dependencies = [
  "pinner-toolchain",
 ]
 
 [[package]]
 name = "pinner-k8s"
-version = "0.5.0"
+version = "0.5.1"
 dependencies = [
  "pinner-ecosystem",
  "pinner-iac-common",
@@ -1647,7 +1647,7 @@ dependencies = [
 
 [[package]]
 name = "pinner-mise"
-version = "0.5.0"
+version = "0.5.1"
 dependencies = [
  "pinner-ecosystem",
  "pinner-toolchain",
@@ -1659,7 +1659,7 @@ dependencies = [
 
 [[package]]
 name = "pinner-node"
-version = "0.5.0"
+version = "0.5.1"
 dependencies = [
  "globset",
  "pinner-ecosystem",
@@ -1672,7 +1672,7 @@ dependencies = [
 
 [[package]]
 name = "pinner-python"
-version = "0.5.0"
+version = "0.5.1"
 dependencies = [
  "pinner-ecosystem",
  "pinner-toolchain",
@@ -1684,7 +1684,7 @@ dependencies = [
 
 [[package]]
 name = "pinner-ruby"
-version = "0.5.0"
+version = "0.5.1"
 dependencies = [
  "pinner-ecosystem",
  "pinner-iac-common",
@@ -1696,7 +1696,7 @@ dependencies = [
 
 [[package]]
 name = "pinner-terraform"
-version = "0.5.0"
+version = "0.5.1"
 dependencies = [
  "hcl-edit",
  "pinner-ecosystem",
@@ -1709,7 +1709,7 @@ dependencies = [
 
 [[package]]
 name = "pinner-toolchain"
-version = "0.5.0"
+version = "0.5.1"
 dependencies = [
  "pinner-ecosystem",
  "serde",
@@ -1718,7 +1718,7 @@ dependencies = [
 
 [[package]]
 name = "pinner-ui"
-version = "0.5.0"
+version = "0.5.1"
 dependencies = [
  "crossterm",
  "pinner-core",
