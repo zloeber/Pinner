@@ -49,6 +49,9 @@ jobs:
           sudo install -m 755 mdbook /usr/local/bin/mdbook
           mdbook --version
 
+      - name: Prepare docs README
+        run: cp README.md docs/README.md
+
       - name: Build book
         run: mdbook build
 
