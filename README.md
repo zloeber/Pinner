@@ -1,30 +1,22 @@
 # Pinner
 
-Pin floating dependency versions across mise, Node, Python, Docker, GitHub Actions, Terraform, Helm, and Kubernetes. Rewrite manifests to exact pins, commit a unified `pinner.lock.json`, and fail CI when the graph drifts.
-
 <div align="center">
 <a href="https://zloeber.github.io/Pinner/">
 <img src="docs/inc/pinner_logo_clean.png" width="520" alt="Pinner™ logo">
 </a>
+
+[![ci](https://github.com/zloeber/Pinner/actions/workflows/ci.yml/badge.svg)](https://github.com/zloeber/Pinner/actions/workflows/ci.yml)  ![License](https://img.shields.io/badge/license-Apache%202.0-blue) [![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/zloeber/Pinner) [![Latest Release](https://img.shields.io/github/v/release/zloeber/Pinner?color=blue&label=Latest%20Release)](https://github.com/zloeber/Pinner/releases/latest)
 </div>
 
 <p align="center">
-    <a href="https://github.com/zloeber/Pinner/releases/latest">
-        <img src="https://img.shields.io/github/v/release/zloeber/Pinner?color=blue&label=Latest%20Release" alt="Latest Release">
-    </a>
-    <a href="https://github.com/zloeber/Pinner/blob/main/LICENSE">
-        <img src="https://img.shields.io/badge/License-MIT-ffffff?labelColor=d4eaf7&color=2e6cc4" alt="License: Apache 2.0">
-    </a>
-    <a href="https://deepwiki.com/zloeber/Pinner">
-        <img alt="Ask DeepWiki" src="https://deepwiki.com/badge.svg">
+    <a href="https://zloeber.github.io/Pinner/">
+        <b>Docs</b>
     </a>
 </p>
 
-[![ci](https://github.com/zloeber/Pinner/actions/workflows/ci.yml/badge.svg)](https://github.com/zloeber/Pinner/actions/workflows/ci.yml)
-[![docs](https://github.com/zloeber/Pinner/actions/workflows/docs.yml/badge.svg)](https://github.com/zloeber/Pinner/actions/workflows/docs.yml)
-[![release](https://github.com/zloeber/Pinner/actions/workflows/release.yml/badge.svg)](https://github.com/zloeber/Pinner/actions/workflows/release.yml)
+---
 
-Docs (GitHub Pages): <https://zloeber.github.io/Pinner/>
+Pin floating dependency versions across mise, Node, Python, Docker, GitHub Actions, Terraform, Helm, and Kubernetes. Rewrite manifests to exact pins, commit a unified `pinner.lock.json`, and fail CI when the graph drifts.
 
 ## Install
 
@@ -59,6 +51,8 @@ Curl installer and `cargo install` remain first-class.
 ```bash
 # Resolve floating refs, rewrite sources, write pinner.lock.json
 pinner pin
+pinner pin --recursive             # include subdirectories
+pinner pin --path ./services/api  # target a specific directory scope
 
 # Bump exact pins to latest (rewrite + lock)
 pinner upgrade

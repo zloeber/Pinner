@@ -22,6 +22,7 @@ pub struct RunOptions {
     pub dry_run: bool,
     pub offline: bool,
     pub continue_on_ecosystem_error: bool,
+    pub recursive: bool,
     pub ecosystems_filter: Option<Vec<EcosystemKind>>,
 }
 
@@ -117,6 +118,7 @@ fn run_resolve_rewrite(
                 ecosystem.as_ref(),
                 policy,
                 &opts.repo,
+                opts.recursive,
                 &ctx,
                 &gitignore,
             ) {
@@ -222,6 +224,9 @@ fn run_resolve_rewrite(
                 continue;
             }
             if let Some(mut rewrite) = batch.ecosystem.rewrite(manifest, &manifest_pins)? {
+                batch
+                    .ecosystem
+                    .validate_rewrite(manifest, &rewrite.new_contents)?;
                 rewrite.path = repo_relative(&opts.repo, &rewrite.path);
                 staged.push(StagedRewrite { rewrite });
             }
@@ -295,8 +300,14 @@ pub fn check(
     };
 
     for ecosystem in selected_ecosystems(ecosystems, policy, opts) {
-        let (_manifests, extracted) =
-            discover_and_extract(ecosystem.as_ref(), policy, &opts.repo, &ctx, &gitignore)?;
+        let (_manifests, extracted) = discover_and_extract(
+            ecosystem.as_ref(),
+            policy,
+            &opts.repo,
+            opts.recursive,
+            &ctx,
+            &gitignore,
+        )?;
 
         for pin in lock_pins
             .iter()
@@ -352,6 +363,7 @@ pub(crate) fn discover_manifests(
     ecosystem: &dyn Ecosystem,
     policy: &Policy,
     repo: &Path,
+    recursive: bool,
     gitignore: &RepoIgnore,
 ) -> Result<Vec<Manifest>, CoreError> {
     Ok(ecosystem
@@ -359,7 +371,9 @@ pub(crate) fn discover_manifests(
         .into_iter()
         .filter(|manifest| {
             let path = repo_relative(repo, &manifest.path);
-            !policy.is_ignored(&path) && !gitignore.is_ignored(&path)
+            !policy.is_ignored(&path)
+                && !gitignore.is_ignored(&path)
+                && is_manifest_in_scope(&path, recursive)
         })
         .collect())
 }
@@ -379,10 +393,11 @@ pub(crate) fn discover_and_extract(
     ecosystem: &dyn Ecosystem,
     policy: &Policy,
     repo: &Path,
+    recursive: bool,
     ctx: &EcosystemCtx<'_>,
     gitignore: &RepoIgnore,
 ) -> Result<(Vec<Manifest>, Vec<Finding>), CoreError> {
-    let manifests = discover_manifests(ecosystem, policy, repo, gitignore)?;
+    let manifests = discover_manifests(ecosystem, policy, repo, recursive, gitignore)?;
     let mut findings = Vec::new();
     for manifest in &manifests {
         for mut finding in ecosystem.extract(manifest, ctx)? {
@@ -391,6 +406,14 @@ pub(crate) fn discover_and_extract(
         }
     }
     Ok((manifests, findings))
+}
+
+fn is_manifest_in_scope(path: &Path, recursive: bool) -> bool {
+    if recursive {
+        return true;
+    }
+    path.parent()
+        .is_none_or(|parent| parent.as_os_str().is_empty())
 }
 
 fn path_matches(allowed: &AllowFloating, path: &Path, repo: &Path) -> bool {

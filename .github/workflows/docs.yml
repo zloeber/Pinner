@@ -5,12 +5,14 @@ on:
     branches: [main]
     paths:
       - "docs/**"
+      - "theme/**"
       - "book.toml"
       - "README.md"
       - ".github/workflows/docs.yml"
   pull_request:
     paths:
       - "docs/**"
+      - "theme/**"
       - "book.toml"
       - "README.md"
       - ".github/workflows/docs.yml"
@@ -32,6 +34,10 @@ jobs:
     steps:
       - uses: actions/checkout@v5
 
+      - name: Configure GitHub Pages
+        if: github.event_name != 'pull_request'
+        uses: actions/configure-pages@v5
+
       # Install from GitHub release binaries (avoids peaceiris/actions-mdbook Node 20).
       - name: Install mdBook
         run: |
@@ -43,7 +49,7 @@ jobs:
           sudo install -m 755 mdbook /usr/local/bin/mdbook
           mdbook --version
 
-      - name: Sync README into docs src
+      - name: Prepare docs README
         run: cp README.md docs/README.md
 
       - name: Build book

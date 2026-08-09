@@ -3,7 +3,7 @@
 # Prints a short actionable summary (not full logs). Exit 0 only if all pass.
 #
 # Usage:
-#   scripts/ci-local           # fmt + clippy + test + schema
+#   scripts/ci-local           # config + fmt + clippy + test + schema
 #   scripts/ci-local fmt       # one gate
 #   PINNER_SKIP_LOCAL_CI=1 …   # skip (hook/rule honor this)
 set -euo pipefail
@@ -56,6 +56,18 @@ gate_fmt() {
   return 1
 }
 
+gate_config() {
+  local log
+  log="$(mktemp -t pinner-ci-config)"
+  if task validate:configs >"$log" 2>&1; then
+    print -r -- "OK   config"
+    rm -f "$log"
+    return 0
+  fi
+  trim_fail "config (task validate:configs)" "$log"
+  return 1
+}
+
 gate_clippy() {
   local log
   log="$(mktemp -t pinner-ci-clippy)"
@@ -94,7 +106,7 @@ gate_schema() {
 
 # Allow: scripts/ci-local   OR   scripts/ci-local fmt clippy
 if [[ $# -eq 0 ]]; then
-  gates=(fmt clippy test schema)
+  gates=(config fmt clippy test schema)
 else
   gates=("$@")
 fi
@@ -103,12 +115,13 @@ failed=0
 print -r -- "local-ci: ${gates[*]}"
 for g in "${gates[@]}"; do
   case "$g" in
+    config) gate_config || failed=1 ;;
     fmt) gate_fmt || failed=1 ;;
     clippy) gate_clippy || failed=1 ;;
     test) gate_test || failed=1 ;;
     schema) gate_schema || failed=1 ;;
     *)
-      print -r -- "FAIL unknown gate: $g (want: fmt|clippy|test|schema)"
+      print -r -- "FAIL unknown gate: $g (want: config|fmt|clippy|test|schema)"
       failed=1
       ;;
   esac

@@ -26,6 +26,9 @@ jobs:
           install: true
           cache: true
 
+      - name: Validate repository configs
+        run: task validate:configs
+
       - name: Format check
         run: task fmt:check
 
@@ -46,6 +49,9 @@ jobs:
 
       - name: Unit and integration tests
         run: task test
+
+      - name: Provider fixture pin/upgrade validation
+        run: task validate:providers
 
       - name: Lock schema fixtures
         run: task test:schema

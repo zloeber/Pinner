@@ -182,6 +182,7 @@ fn options(repo: &Path) -> RunOptions {
         dry_run: false,
         offline: false,
         continue_on_ecosystem_error: false,
+        recursive: true,
         ecosystems_filter: None,
     }
 }

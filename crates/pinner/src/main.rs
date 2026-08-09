@@ -6,6 +6,9 @@ use std::io::{self, IsTerminal, Write};
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::thread;
+use std::time::Duration;
 
 use clap::Parser;
 use pinner_core::{
@@ -36,6 +39,49 @@ struct UpgradeScriptPlan {
     commands: Vec<UpgradeScriptCommand>,
 }
 
+struct ScanSpinner {
+    running: Arc<AtomicBool>,
+    handle: Option<thread::JoinHandle<()>>,
+    clear_width: usize,
+}
+
+impl ScanSpinner {
+    fn start(message: String) -> Self {
+        let running = Arc::new(AtomicBool::new(true));
+        let running_bg = Arc::clone(&running);
+        let clear_width = message.len() + 3;
+
+        let handle = thread::spawn(move || {
+            let frames = ['|', '/', '-', '\\'];
+            let mut idx = 0usize;
+
+            while running_bg.load(Ordering::Relaxed) {
+                eprint!("\r{} {}", frames[idx % frames.len()], message);
+                let _ = io::stderr().flush();
+                idx += 1;
+                thread::sleep(Duration::from_millis(90));
+            }
+        });
+
+        Self {
+            running,
+            handle: Some(handle),
+            clear_width,
+        }
+    }
+}
+
+impl Drop for ScanSpinner {
+    fn drop(&mut self) {
+        self.running.store(false, Ordering::Relaxed);
+        if let Some(handle) = self.handle.take() {
+            let _ = handle.join();
+        }
+        eprint!("\r{:<width$}\r", "", width = self.clear_width);
+        let _ = io::stderr().flush();
+    }
+}
+
 fn main() -> ExitCode {
     let cli = Cli::parse();
     match run(cli) {
@@ -58,7 +104,9 @@ fn run(cli: Cli) -> CliResult<ExitCode> {
         Commands::Audit { fix } => {
             let (policy, opts, ecosystems) = prepare(&cli)?;
             if *fix {
+                let spinner = start_scan_spinner(&cli, format, &opts);
                 let (report, aborted) = run_pin(&ecosystems, &policy, &opts, cli.walkthrough)?;
+                drop(spinner);
                 if aborted {
                     eprintln!("walkthrough aborted; nothing written");
                     return Ok(ExitCode::SUCCESS);
@@ -71,7 +119,10 @@ fn run(cli: Cli) -> CliResult<ExitCode> {
                     let sink = pinner_ui::StderrAuditProgress::new(true);
                     audit(&ecosystems, &policy, &opts, Some(&sink))?
                 } else {
-                    audit(&ecosystems, &policy, &opts, None)?
+                    let spinner = start_scan_spinner(&cli, format, &opts);
+                    let report = audit(&ecosystems, &policy, &opts, None)?;
+                    drop(spinner);
+                    report
                 };
                 emit_audit(&report, format)?;
                 if report.findings.is_empty() {
@@ -83,14 +134,18 @@ fn run(cli: Cli) -> CliResult<ExitCode> {
         }
         Commands::Explain { target } => {
             let (policy, opts, ecosystems) = prepare(&cli)?;
+            let spinner = start_scan_spinner(&cli, format, &opts);
             let report = explain(&ecosystems, &policy, &opts, target)?;
+            drop(spinner);
             emit_explain(&report, format)?;
             Ok(ExitCode::SUCCESS)
         }
         Commands::Toolchain(cmd) => run_toolchain(&cli, cmd, format),
         Commands::Pin => {
             let (policy, opts, ecosystems) = prepare(&cli)?;
+            let spinner = start_scan_spinner(&cli, format, &opts);
             let (report, aborted) = run_pin(&ecosystems, &policy, &opts, cli.walkthrough)?;
+            drop(spinner);
             if aborted {
                 eprintln!("walkthrough aborted; nothing written");
                 return Ok(ExitCode::SUCCESS);
@@ -105,11 +160,15 @@ fn run(cli: Cli) -> CliResult<ExitCode> {
             let (policy, mut opts, ecosystems) = prepare(&cli)?;
             opts.continue_on_ecosystem_error = *continue_on_ecosystem_error;
             if *script {
+                let spinner = start_scan_spinner(&cli, format, &opts);
                 let plan = build_upgrade_script(&ecosystems, &policy, &opts)?;
+                drop(spinner);
                 emit_upgrade_script(&plan, format)?;
                 return Ok(ExitCode::SUCCESS);
             }
+            let spinner = start_scan_spinner(&cli, format, &opts);
             let (report, aborted) = run_upgrade(&ecosystems, &policy, &opts, cli.walkthrough)?;
+            drop(spinner);
             if aborted {
                 eprintln!("walkthrough aborted; nothing written");
                 return Ok(ExitCode::SUCCESS);
@@ -120,7 +179,9 @@ fn run(cli: Cli) -> CliResult<ExitCode> {
         }
         Commands::Check => {
             let (policy, opts, ecosystems) = prepare(&cli)?;
+            let spinner = start_scan_spinner(&cli, format, &opts);
             let report = check(&ecosystems, &policy, &opts)?;
+            drop(spinner);
             emit_report(&report, format)?;
             if report.drift.is_empty() {
                 Ok(ExitCode::SUCCESS)
@@ -195,14 +256,53 @@ fn prepare(cli: &Cli) -> CliResult<Prepared> {
     let config_path = resolve_config_path(cli.config.as_deref())?;
     let policy = Policy::load(config_path.as_deref())?;
     let ecosystems_filter = parse_ecosystems(cli.ecosystem.as_deref())?;
+    let cwd = std::env::current_dir()?;
+    let repo = match cli.path.as_deref() {
+        Some(path) if path.is_absolute() => path.to_path_buf(),
+        Some(path) => cwd.join(path),
+        None => cwd,
+    };
+    if !repo.is_dir() {
+        return Err(format!("scan path is not a directory: {}", repo.display()).into());
+    }
     let opts = RunOptions {
-        repo: std::env::current_dir()?,
+        repo,
         dry_run: cli.dry_run,
         offline: cli.offline || policy.offline_default,
         continue_on_ecosystem_error: false,
+        recursive: cli.recursive,
         ecosystems_filter,
     };
     Ok((policy, opts, register_ecosystems()))
+}
+
+fn start_scan_spinner(cli: &Cli, format: Format, opts: &RunOptions) -> Option<ScanSpinner> {
+    if cli.agent || !matches!(format, Format::Text) || !stderr_is_tty() {
+        return None;
+    }
+    let mode = if opts.recursive {
+        "recursive"
+    } else {
+        "current directory only"
+    };
+    Some(ScanSpinner::start(format!(
+        "scanning {} ({mode})",
+        display_scan_path(&opts.repo)
+    )))
+}
+
+fn display_scan_path(path: &Path) -> String {
+    std::env::current_dir()
+        .ok()
+        .and_then(|cwd| path.strip_prefix(&cwd).ok().map(|rel| rel.to_path_buf()))
+        .map(|rel| {
+            if rel.as_os_str().is_empty() {
+                ".".to_string()
+            } else {
+                format!("./{}", rel.display())
+            }
+        })
+        .unwrap_or_else(|| path.display().to_string())
 }
 
 fn run_toolchain(cli: &Cli, cmd: &ToolchainCmd, format: Format) -> CliResult<ExitCode> {
@@ -399,10 +499,57 @@ fn emit_toolchain(tools: &[ToolStatus], format: Format) -> Result<(), Box<dyn st
             println!("{}", serde_json::to_string_pretty(tools)?);
         }
         Format::Text => {
+            if tools.is_empty() {
+                println!("No toolchain requirements for enabled ecosystems.");
+                return Ok(());
+            }
+
+            let tool_width = tools
+                .iter()
+                .map(|tool| tool.name.len())
+                .max()
+                .unwrap_or(4)
+                .max(4);
+            let status_width = 7usize;
+
+            println!(
+                "{:<tool_width$}  {:<status_width$}  version",
+                "tool",
+                "status",
+                tool_width = tool_width,
+                status_width = status_width
+            );
+            let blank = "";
+            println!(
+                "{:-<tool_width$}  {:-<status_width$}  {:-<7}",
+                blank,
+                blank,
+                blank,
+                tool_width = tool_width,
+                status_width = status_width
+            );
+
             for tool in tools {
                 let state = if tool.present { "present" } else { "missing" };
                 let version = tool.version.as_deref().unwrap_or("-");
-                println!("{}: {state} ({version})", tool.name);
+                println!(
+                    "{:<tool_width$}  {:<status_width$}  {}",
+                    tool.name,
+                    state,
+                    version,
+                    tool_width = tool_width,
+                    status_width = status_width
+                );
+                if let Some(path) = &tool.path {
+                    println!(
+                        "{:<tool_width$}  {:<status_width$}  path={}",
+                        blank,
+                        blank,
+                        path.display(),
+                        tool_width = tool_width,
+                        status_width = status_width
+                    );
+                }
             }
         }
     }
@@ -545,11 +692,16 @@ fn render_upgrade_script(commands: &[UpgradeScriptCommand]) -> String {
         out.push_str("# manifest: ");
         out.push_str(&cmd.manifest.display().to_string());
         out.push('\n');
-        out.push_str("(cd ");
-        out.push_str(&shell_quote_path(&cmd.working_dir));
-        out.push_str(" && ");
-        out.push_str(&cmd.command);
-        out.push_str(")\n");
+        if is_current_dir(&cmd.working_dir) {
+            out.push_str(&cmd.command);
+            out.push('\n');
+        } else {
+            out.push_str("(cd ");
+            out.push_str(&shell_quote_path(&cmd.working_dir));
+            out.push_str(" && ");
+            out.push_str(&cmd.command);
+            out.push_str(")\n");
+        }
     }
 
     out
@@ -587,6 +739,39 @@ fn shell_quote_path(path: &Path) -> String {
     shell_quote(&path.display().to_string())
 }
 
+fn is_current_dir(path: &Path) -> bool {
+    path.as_os_str().is_empty() || path == Path::new(".")
+}
+
 fn shell_quote(value: &str) -> String {
     format!("'{}'", value.replace('\'', "'\"'\"'"))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{UpgradeScriptCommand, is_current_dir, render_upgrade_script};
+    use pinner_ecosystem::EcosystemKind;
+    use std::path::PathBuf;
+
+    #[test]
+    fn script_omits_cd_for_current_dir() {
+        let script = render_upgrade_script(&[UpgradeScriptCommand {
+            ecosystem: EcosystemKind::Node,
+            manager: "npm",
+            manifest: PathBuf::from("package.json"),
+            working_dir: PathBuf::new(),
+            command: "npm update".to_string(),
+        }]);
+
+        assert!(script.contains("npm update\n"));
+        assert!(!script.contains("cd ''"));
+        assert!(!script.contains("(cd "));
+    }
+
+    #[test]
+    fn detects_current_directory_paths() {
+        assert!(is_current_dir(PathBuf::new().as_path()));
+        assert!(is_current_dir(PathBuf::from(".").as_path()));
+        assert!(!is_current_dir(PathBuf::from("subdir").as_path()));
+    }
 }

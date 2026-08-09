@@ -66,4 +66,12 @@ impl Ecosystem for MiseEcosystem {
     ) -> Result<Option<Rewrite>, EcosystemError> {
         rewrite::rewrite(manifest, pins)
     }
+
+    fn validate_rewrite(
+        &self,
+        manifest: &Manifest,
+        new_contents: &str,
+    ) -> Result<(), EcosystemError> {
+        rewrite::validate_rewrite(manifest, new_contents)
+    }
 }

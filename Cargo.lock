@@ -1503,8 +1503,12 @@ dependencies = [
  "pinner-toolchain",
  "pinner-ui",
  "predicates",
+ "serde",
  "serde_json",
+ "serde_yaml",
  "tempfile",
+ "toml",
+ "walkdir",
 ]
 
 [[package]]
