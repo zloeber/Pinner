@@ -9,8 +9,8 @@ use std::sync::Arc;
 
 use clap::Parser;
 use pinner_core::{
-    ExplainReport, Policy, RunOptions, RunReport, WalkthroughFilter, WalkthroughOutcome, audit,
-    check, explain, pin, pin_with_filter, upgrade, upgrade_with_filter,
+    ExplainReport, Policy, RepoIgnore, RunOptions, RunReport, WalkthroughFilter,
+    WalkthroughOutcome, audit, check, explain, pin, pin_with_filter, upgrade, upgrade_with_filter,
 };
 use pinner_ecosystem::{Ecosystem, EcosystemKind, repo_relative};
 use pinner_toolchain::{ToolStatus, ensure, status};
@@ -422,6 +422,7 @@ fn build_upgrade_script(
 ) -> Result<UpgradeScriptPlan, Box<dyn std::error::Error>> {
     let mut commands = Vec::new();
     let mut seen = BTreeSet::new();
+    let gitignore = RepoIgnore::new(&opts.repo);
 
     for ecosystem in ecosystems {
         if !policy.is_enabled(ecosystem.kind()) {
@@ -435,7 +436,7 @@ fn build_upgrade_script(
 
         for manifest in ecosystem.discover(&opts.repo)? {
             let rel_manifest = repo_relative(&opts.repo, &manifest.path);
-            if policy.is_ignored(&rel_manifest) {
+            if policy.is_ignored(&rel_manifest) || gitignore.is_ignored(&rel_manifest) {
                 continue;
             }
             if let Some((manager, manifest_cmd)) =
