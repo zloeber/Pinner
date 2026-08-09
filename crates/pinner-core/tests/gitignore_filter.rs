@@ -117,6 +117,7 @@ fn audit_skips_gitignored_manifests() {
         repo: dir.path().to_path_buf(),
         dry_run: true,
         offline: true,
+        continue_on_ecosystem_error: false,
         ecosystems_filter: None,
     };
     let report = audit(&ecosystems, &policy, &opts, None).unwrap();
