@@ -29,6 +29,51 @@ pub(crate) fn rewrite(
     }))
 }
 
+pub(crate) fn validate_rewrite(
+    manifest: &pinner_ecosystem::Manifest,
+    new_contents: &str,
+) -> Result<(), EcosystemError> {
+    let file_name = manifest
+        .path
+        .file_name()
+        .and_then(|n| n.to_str())
+        .unwrap_or("");
+
+    match file_name {
+        ".mise.toml" => {
+            new_contents
+                .parse::<DocumentMut>()
+                .map_err(|e| EcosystemError::Parse {
+                    path: manifest.path.clone(),
+                    message: format!("invalid rewritten .mise.toml: {e}"),
+                })?;
+            Ok(())
+        }
+        ".tool-versions" => {
+            for (idx, line) in new_contents.lines().enumerate() {
+                let trimmed = line.trim();
+                if trimmed.is_empty() || trimmed.starts_with('#') {
+                    continue;
+                }
+                let mut parts = trimmed.split_whitespace();
+                let name = parts.next();
+                let version = parts.next();
+                if name.is_none() || version.is_none() {
+                    return Err(EcosystemError::Parse {
+                        path: manifest.path.clone(),
+                        message: format!(
+                            "invalid rewritten .tool-versions at line {}: expected '<tool> <version>'",
+                            idx + 1
+                        ),
+                    });
+                }
+            }
+            Ok(())
+        }
+        _ => Ok(()),
+    }
+}
+
 fn rewrite_mise_toml(path: &Path, pins: &[Pin]) -> Result<String, EcosystemError> {
     let contents = std::fs::read_to_string(path)?;
     let mut doc = contents

@@ -13,3 +13,7 @@ create-missing = false
 git-repository-url = "https://github.com/zloeber/Pinner"
 edit-url-template = "https://github.com/zloeber/Pinner/edit/main/docs/{path}"
 site-url = "/Pinner/"
+default-theme = "light"
+preferred-dark-theme = "navy"
+additional-css = ["theme/pinner.css"]
+additional-js = ["theme/pinner.js"]

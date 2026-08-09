@@ -72,13 +72,19 @@ pub fn audit(
                 kind,
                 phase: AuditPhase::Discover,
             });
-            let manifests = discover_manifests(ecosystem.as_ref(), policy, &opts.repo, &gitignore)
-                .inspect_err(|err| {
-                    emit(AuditEvent::EcosystemFailed {
-                        kind,
-                        error: err.to_string(),
-                    });
-                })?;
+            let manifests = discover_manifests(
+                ecosystem.as_ref(),
+                policy,
+                &opts.repo,
+                opts.recursive,
+                &gitignore,
+            )
+            .inspect_err(|err| {
+                emit(AuditEvent::EcosystemFailed {
+                    kind,
+                    error: err.to_string(),
+                });
+            })?;
             emit(AuditEvent::EcosystemPhase {
                 kind,
                 phase: AuditPhase::Extract,
@@ -183,8 +189,14 @@ fn explain_via_resolve(
     };
 
     for ecosystem in selected_ecosystems(ecosystems, policy, opts) {
-        let (_manifests, extracted) =
-            discover_and_extract(ecosystem.as_ref(), policy, &opts.repo, &ctx, &gitignore)?;
+        let (_manifests, extracted) = discover_and_extract(
+            ecosystem.as_ref(),
+            policy,
+            &opts.repo,
+            opts.recursive,
+            &ctx,
+            &gitignore,
+        )?;
         let Some(finding) = extracted
             .iter()
             .find(|finding| matches_target(&finding.name, &finding.path, target))

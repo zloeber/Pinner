@@ -28,6 +28,8 @@ pinner check     # drift gate (no writes)
 pinner audit     # report floating refs (live progress on TTY stderr; pretty panel on stdout)
 pinner audit --fix
 pinner explain <name-or-path>
+pinner pin --recursive            # include subdirectories under current path
+pinner pin --path ./services/api  # scan a specific directory
 ```
 
 Modes:

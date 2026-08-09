@@ -34,5 +34,9 @@ pinner-ui = { workspace = true }
 assert_cmd = { workspace = true }
 jsonschema = { workspace = true }
 predicates = { workspace = true }
+serde = { workspace = true }
 serde_json = { workspace = true }
+serde_yaml = { workspace = true }
 tempfile = { workspace = true }
+toml = { workspace = true }
+walkdir = { workspace = true }

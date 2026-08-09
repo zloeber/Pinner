@@ -95,7 +95,11 @@ fn version_from_output(output: &crate::CommandOutput) -> Option<String> {
     } else {
         output.stdout.trim()
     };
-    (!value.is_empty()).then(|| value.to_string())
+    value
+        .lines()
+        .map(str::trim)
+        .find(|line| !line.is_empty())
+        .map(str::to_string)
 }
 
 pub(crate) fn path_with_mise_dirs() -> Option<std::ffi::OsString> {
@@ -146,6 +150,39 @@ fn is_executable_file(candidate: &Path) -> bool {
     #[cfg(not(unix))]
     {
         true
+    }
+}
+
+#[cfg(test)]
+mod version_tests {
+    use super::version_from_output;
+    use crate::CommandOutput;
+
+    #[test]
+    fn picks_first_non_empty_stdout_line() {
+        let output = CommandOutput {
+            status: 0,
+            stdout:
+                "gh version 2.97.0 (2026-07-31)\nhttps://github.com/cli/cli/releases/tag/v2.97.0\n"
+                    .to_string(),
+            stderr: String::new(),
+        };
+
+        assert_eq!(
+            version_from_output(&output).as_deref(),
+            Some("gh version 2.97.0 (2026-07-31)")
+        );
+    }
+
+    #[test]
+    fn falls_back_to_stderr_when_stdout_is_blank() {
+        let output = CommandOutput {
+            status: 0,
+            stdout: "\n\t\n".to_string(),
+            stderr: "uv 0.12.1\nextra detail".to_string(),
+        };
+
+        assert_eq!(version_from_output(&output).as_deref(), Some("uv 0.12.1"));
     }
 }
 

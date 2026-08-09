@@ -23,6 +23,12 @@ pub struct Cli {
     pub offline: bool,
     #[arg(long, global = true)]
     pub dry_run: bool,
+    /// Directory to scan (defaults to current directory)
+    #[arg(long, global = true)]
+    pub path: Option<PathBuf>,
+    /// Recursively scan subdirectories under --path/current directory
+    #[arg(long, global = true)]
+    pub recursive: bool,
     #[arg(long, global = true, value_delimiter = ',')]
     pub ecosystem: Option<Vec<String>>,
     #[arg(long, global = true, default_value = "text")]

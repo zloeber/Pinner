@@ -151,6 +151,13 @@ pub trait Ecosystem: Send + Sync {
     ) -> Result<Vec<Pin>, EcosystemError>;
     fn rewrite(&self, manifest: &Manifest, pins: &[Pin])
     -> Result<Option<Rewrite>, EcosystemError>;
+    fn validate_rewrite(
+        &self,
+        _manifest: &Manifest,
+        _new_contents: &str,
+    ) -> Result<(), EcosystemError> {
+        Ok(())
+    }
 }
 
 #[cfg(test)]

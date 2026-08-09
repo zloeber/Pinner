@@ -137,9 +137,40 @@ tasks:
     cmds:
       - mise exec -- cargo test {{.CARGO_FLAGS}} -p pinner --test idempotency_all_fixtures
 
-  ci:
-    desc: Local CI gate (fmt check, clippy, tests, schema)
+  validate:providers:
+    desc: Aggregate fixture pin/upgrade validations across ecosystem providers
     cmds:
+      - task: validate:corpus
+      - task: test:idempotency
+      - mise exec -- cargo test {{.CARGO_FLAGS}} -p pinner-actions --test actions_pin -- upgrade_
+      - mise exec -- cargo test {{.CARGO_FLAGS}} -p pinner-azure --test azure_pin -- upgrade_
+      - mise exec -- cargo test {{.CARGO_FLAGS}} -p pinner-cargo --test cargo_pin -- upgrade_
+      - mise exec -- cargo test {{.CARGO_FLAGS}} -p pinner-docker --test docker_pin -- upgrade_
+      - mise exec -- cargo test {{.CARGO_FLAGS}} -p pinner-gitlab --test gitlab_pin -- upgrade_
+      - mise exec -- cargo test {{.CARGO_FLAGS}} -p pinner-go --test go_pin -- upgrade_
+      - mise exec -- cargo test {{.CARGO_FLAGS}} -p pinner-helm --test helm_pin -- upgrade_
+      - mise exec -- cargo test {{.CARGO_FLAGS}} -p pinner-k8s --test k8s_pin -- upgrade_
+      - mise exec -- cargo test {{.CARGO_FLAGS}} -p pinner-mise --test resolve_rewrite -- upgrade_
+      - mise exec -- cargo test {{.CARGO_FLAGS}} -p pinner-node --test node_pin -- upgrade_
+      - mise exec -- cargo test {{.CARGO_FLAGS}} -p pinner-python --test python_pin -- upgrade_
+      - mise exec -- cargo test {{.CARGO_FLAGS}} -p pinner-ruby --test ruby_pin -- upgrade_
+      - mise exec -- cargo test {{.CARGO_FLAGS}} -p pinner-terraform --test resolve_rewrite -- upgrade_
+
+  validate:corpus:
+    desc: Stage fixture corpus and run end-to-end pin->upgrade->check validation
+    cmds:
+      - mise exec -- cargo test {{.CARGO_FLAGS}} -p pinner --test corpus_pipeline
+
+  validate:configs:
+    desc: Validate repository TOML/YAML/JSON config syntax
+    cmds:
+      - mise exec -- cargo test {{.CARGO_FLAGS}} -p pinner --test config_syntax
+
+  ci:
+    desc: Local CI gate (config, provider fixtures, fmt, clippy, tests, schema)
+    cmds:
+      - task: validate:configs
+      - task: validate:providers
       - task: fmt:check
       - task: clippy
       - task: test
@@ -191,3 +222,10 @@ tasks:
     desc: Remove Cargo build artifacts
     cmds:
       - mise exec -- cargo clean
+
+  build:demo:
+    desc: Build demo GIF and WebP from terminal recording
+    cmds:
+      - |
+        vhs ./scripts/demo-quick-gif.tape
+        gifsicle -O3 --lossy=80 -o optimized-demo.gif demo.gif
